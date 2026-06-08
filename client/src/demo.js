@@ -97,6 +97,7 @@ export const demo = {
 
 export function initialDemoFromUrl() {
   try {
+    if (window.__M1_FORCE_DEMO__) return true; // standalone/offline build flag
     return new URLSearchParams(window.location.search).has('demo');
   } catch {
     return false;
