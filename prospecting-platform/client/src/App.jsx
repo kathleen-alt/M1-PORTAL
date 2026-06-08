@@ -24,10 +24,40 @@ function timeAgo(iso) {
 const newId = (p) => `${p}-${Math.random().toString(36).slice(2, 8)}`;
 const isStale = (iso) => iso && (Date.now() - new Date(iso).getTime()) / 86400000 >= 14;
 
-// Where a signal came from — a link when we have a source URL, else plain text.
-function SourceLink({ s }) {
-  if (s?.url && s.url !== '#') return <a className="link" href={s.url} target="_blank" rel="noreferrer">{s.source} ↗</a>;
-  return <span>{s?.source || 'Unknown source'}</span>;
+// Market cap in $millions, parsed from the numeric field or a string like "C$1.24B".
+function mcapM(c) {
+  if (typeof c.marketCap === 'number') return c.marketCap;
+  const m = (c.marketCapStr || '').match(/([\d.]+)\s*([kmb])?/i);
+  if (!m) return null;
+  let v = parseFloat(m[1]);
+  const u = (m[2] || '').toLowerCase();
+  if (u === 'b') v *= 1000; else if (u === 'k') v /= 1000;
+  return Number.isFinite(v) ? v : null;
+}
+const MCAP_RANGES = [
+  { id: 'all', label: 'All market caps', test: () => true },
+  { id: 'micro', label: 'Micro · < $50M', test: (v) => v < 50 },
+  { id: 'small', label: 'Small · $50M–$250M', test: (v) => v >= 50 && v < 250 },
+  { id: 'mid', label: 'Mid · $250M–$1B', test: (v) => v >= 250 && v < 1000 },
+  { id: 'large', label: 'Large · > $1B', test: (v) => v >= 1000 },
+];
+
+// Where a signal came from — always clickable. Uses the canonical source URL
+// when present (e.g. SEDAR+/SEC/news feed in live mode), else resolves to the
+// filing portal or a news search for the headline so the real item is findable.
+function sourceHref(s, companyName) {
+  if (s?.url && s.url !== '#') return s.url;
+  const src = (s?.source || '').toLowerCase();
+  if (src.includes('sedar')) return 'https://www.sedarplus.ca';
+  if (src.includes('sedi')) return 'https://www.sedi.ca';
+  if (src.includes('edgar') || src.includes('sec ')) return 'https://www.sec.gov/cgi-bin/browse-edgar';
+  const q = encodeURIComponent(`${s?.company?.name || companyName || ''} ${s?.headline || ''}`.trim());
+  return `https://www.google.com/search?q=${q}`;
+}
+function SourceLink({ s, companyName }) {
+  const href = sourceHref(s, companyName);
+  const titled = s?.url && s.url !== '#' ? 'Open the source' : 'Find this in the news';
+  return <a className="link" href={href} target="_blank" rel="noreferrer" title={titled}>{s?.source || 'source'} ↗</a>;
 }
 
 // ── Root / shell ─────────────────────────────────────────────────────────────
@@ -297,6 +327,7 @@ function Companies({ companies, onOpen, onImport, flash, onlyWatch, setOnlyWatch
   const [exch, setExch] = useState('all');
   const [industry, setIndustry] = useState('all');
   const [status, setStatus] = useState('all');
+  const [mcap, setMcap] = useState('all');
   const [showImport, setShowImport] = useState(false);
   const [bulkSeq, setBulkSeq] = useState(sequences[0]?.id || '');
 
@@ -306,6 +337,7 @@ function Companies({ companies, onOpen, onImport, flash, onlyWatch, setOnlyWatch
     if (exch !== 'all' && c.exchange !== exch) return false;
     if (industry !== 'all' && c.industry !== industry) return false;
     if (status !== 'all' && c.status !== status) return false;
+    if (mcap !== 'all') { const v = mcapM(c); const r = MCAP_RANGES.find((x) => x.id === mcap); if (v == null || !r.test(v)) return false; }
     if (q.trim()) { const n = q.trim().toLowerCase(); if (!`${c.name} ${c.ticker} ${c.industry} ${(c.tags || []).join(' ')}`.toLowerCase().includes(n)) return false; }
     return true;
   });
@@ -324,6 +356,7 @@ function Companies({ companies, onOpen, onImport, flash, onlyWatch, setOnlyWatch
         <input className="grow" placeholder="Search company, ticker, tag…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={exch} onChange={(e) => setExch(e.target.value)}><option value="all">All exchanges</option>{EXCHANGES.map((x) => <option key={x}>{x}</option>)}</select>
         <select value={industry} onChange={(e) => setIndustry(e.target.value)}><option value="all">All industries</option>{industries.map((x) => <option key={x}>{x}</option>)}</select>
+        <select value={mcap} onChange={(e) => setMcap(e.target.value)} title="Market cap">{MCAP_RANGES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select>
         <select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">All statuses</option>{STATUSES.map((x) => <option key={x}>{x}</option>)}</select>
         <button className={`pill ${onlyWatch ? 'active' : ''}`} onClick={() => setOnlyWatch((v) => !v)}>★ Watchlist</button>
       </div>
@@ -835,7 +868,7 @@ function SignalsTab({ c }) {
                 <span className="sig-dot" style={{ background: t?.accent }} />
                 <span style={{ minWidth: 0 }}>
                   <span className="sig-mini-head">{s.headline}</span>
-                  <span className="muted" style={{ fontSize: 11.5 }}>{t?.label} · Source: <SourceLink s={s} /> · {timeAgo(s.date)}</span>
+                  <span className="muted" style={{ fontSize: 11.5 }}>{t?.label} · Source: <SourceLink s={s} companyName={c.name} /> · {timeAgo(s.date)}</span>
                 </span>
               </div>
             );
