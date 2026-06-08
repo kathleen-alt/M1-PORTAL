@@ -299,6 +299,7 @@ app.get('/api/config', (_req, res) => {
     sourcing: NEWS_API_KEY ? 'newsapi' : 'web-search',
     model: MODEL,
     slackConfigured: Boolean(SLACK_WEBHOOK_URL),
+    hasAnthropicKey: Boolean(anthropic),
   });
 });
 

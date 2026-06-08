@@ -1,4 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { demo, initialDemoFromUrl } from './demo';
+
+// Seed demo mode from the URL (?demo=1) before any API call runs.
+demo.set(initialDemoFromUrl());
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 async function jsonFetch(url, opts) {
@@ -7,13 +11,14 @@ async function jsonFetch(url, opts) {
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
+// Each call routes to bundled sample data when demo mode is on, else the API.
 const api = {
-  config: () => jsonFetch('/api/config'),
-  news: (p) => jsonFetch(`/api/news?${new URLSearchParams(p).toString()}`),
-  analyze: (story) => jsonFetch('/api/analyze', post({ story })),
-  generate: (story, format, tone) => jsonFetch('/api/generate', post({ story, format, tone })),
-  refine: (text, instruction) => jsonFetch('/api/refine', post({ text, instruction })),
-  slack: (text) => jsonFetch('/api/slack', post({ text })),
+  config: () => (demo.enabled ? demo.config() : jsonFetch('/api/config')),
+  news: (p) => (demo.enabled ? demo.news(p) : jsonFetch(`/api/news?${new URLSearchParams(p).toString()}`)),
+  analyze: (story) => (demo.enabled ? demo.analyze(story) : jsonFetch('/api/analyze', post({ story }))),
+  generate: (story, format, tone) => (demo.enabled ? demo.generate(story, format) : jsonFetch('/api/generate', post({ story, format, tone }))),
+  refine: (text, instruction) => (demo.enabled ? demo.refine(text) : jsonFetch('/api/refine', post({ text, instruction }))),
+  slack: (text) => (demo.enabled ? demo.slack(text) : jsonFetch('/api/slack', post({ text }))),
 };
 function post(body) {
   return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
@@ -55,6 +60,7 @@ export default function App() {
   const [pillars, setPillars] = useState(FALLBACK_PILLARS);
   const [sourcing, setSourcing] = useState('');
   const [slackConfigured, setSlackConfigured] = useState(false);
+  const [demoOn, setDemoOn] = useState(demo.enabled);
 
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -74,16 +80,43 @@ export default function App() {
   const pillarById = useMemo(() => Object.fromEntries(pillars.map((p) => [p.id, p])), [pillars]);
 
   useEffect(() => {
-    api.config()
-      .then((c) => {
-        if (c.pillars?.length) setPillars(c.pillars);
-        setSourcing(c.sourcing);
-        setSlackConfigured(Boolean(c.slackConfigured));
-      })
-      .catch(() => {});
-    loadNews(1, true);
+    bootstrap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function bootstrap() {
+    try {
+      const c = await api.config();
+      if (c.pillars?.length) setPillars(c.pillars);
+      setSourcing(c.sourcing);
+      setSlackConfigured(Boolean(c.slackConfigured));
+      // Auto-fall back to demo when the server has no Anthropic key configured.
+      if (!demo.enabled && c.hasAnthropicKey === false) {
+        applyDemo(true);
+        return;
+      }
+    } catch {
+      /* config is best-effort */
+    }
+    loadNews(1, true);
+  }
+
+  function applyDemo(on) {
+    demo.set(on);
+    setDemoOn(on);
+    try {
+      const url = new URL(window.location.href);
+      if (on) url.searchParams.set('demo', '1');
+      else url.searchParams.delete('demo');
+      window.history.replaceState({}, '', url);
+    } catch { /* ignore */ }
+    setSelected(null);
+    setStatuses({});
+    setCalendar([]);
+    setSlackFeed([]);
+    setActivePillar('all');
+    bootstrap();
+  }
 
   function flash(msg) {
     setToast(msg);
@@ -144,13 +177,25 @@ export default function App() {
           ))}
         </nav>
         <div className="spacer" />
+        <button
+          className={`btn sm ghost demo-toggle ${demoOn ? 'on' : ''}`}
+          onClick={() => applyDemo(!demoOn)}
+          title={demoOn ? 'Showing bundled sample data — click for live mode' : 'Switch to bundled sample data (no API key needed)'}
+        >
+          <span className={`switch ${demoOn ? 'on' : ''}`} style={{ pointerEvents: 'none' }} /> Demo
+        </button>
         <span className="src-chip" title="How news is being sourced">
-          <span className={`dot ${sourcing === 'newsapi' ? '' : 'warn'}`} />
-          {sourcing === 'newsapi' ? 'NewsAPI + Claude' : sourcing === 'web-search' ? 'Claude web-search' : 'connecting…'}
+          <span className={`dot ${demoOn ? 'demo' : sourcing === 'newsapi' ? '' : 'warn'}`} />
+          {demoOn ? 'Demo data' : sourcing === 'newsapi' ? 'NewsAPI + Claude' : sourcing === 'web-search' ? 'Claude web-search' : 'connecting…'}
         </span>
       </header>
 
       <main className="main">
+        {demoOn && (
+          <div className="banner demo-banner">
+            ◆ <b>Demo mode</b> — showing bundled sample stories so you can explore the full workflow. Add an <code>ANTHROPIC_API_KEY</code> and turn Demo off for real, source-linked news.
+          </div>
+        )}
         {tab === 'Dashboard' && (
           <Dashboard
             articles={articles}

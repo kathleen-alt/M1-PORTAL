@@ -74,6 +74,12 @@ a { color: inherit; }
 }
 .src-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
 .src-chip .dot.warn { background: var(--warn); }
+.src-chip .dot.demo { background: #a78bfa; }
+.demo-toggle { gap: 8px; }
+.demo-toggle.on { border-color: #a78bfa; color: #c4b5fd; }
+.demo-toggle .switch.on { background: #a78bfa; border-color: #a78bfa; }
+.banner.demo-banner { background: rgba(167, 139, 250, 0.1); border-color: rgba(167, 139, 250, 0.32); color: #c4b5fd; }
+.banner.demo-banner code { background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 5px; font-size: 12px; }
 
 .main { width: 100%; max-width: 1240px; margin: 0 auto; padding: 26px; flex: 1; }
 
