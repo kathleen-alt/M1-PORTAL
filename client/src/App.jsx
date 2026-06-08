@@ -69,7 +69,9 @@ export default function App() {
   const [hasMore, setHasMore] = useState(false);
   const [query, setQuery] = useState('');
   const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [activePillar, setActivePillar] = useState('all');
+  const [sentiment, setSentiment] = useState('all'); // all | positive | neutral | negative
 
   const [selected, setSelected] = useState(null);
   const [statuses, setStatuses] = useState({}); // id -> draft|approved|published
@@ -128,7 +130,7 @@ export default function App() {
     setLoading(true);
     setError('');
     try {
-      const data = await api.news({ q: query, from, page: nextPage, pageSize: 12 });
+      const data = await api.news({ q: query, from, to, page: nextPage, pageSize: 12, perTopic: 10 });
       setArticles((prev) => (replace ? data.articles : dedupeById([...prev, ...data.articles])));
       setPage(data.page);
       setHasMore(Boolean(data.hasMore));
@@ -179,7 +181,9 @@ export default function App() {
     }));
   }
 
-  const visible = activePillar === 'all' ? articles : articles.filter((a) => a.pillar === activePillar);
+  const visible = articles.filter(
+    (a) => (activePillar === 'all' || a.pillar === activePillar) && (sentiment === 'all' || a.sentiment === sentiment),
+  );
 
   return (
     <div className="app">
@@ -226,10 +230,12 @@ export default function App() {
 
         {tab === 'Newsroom' && (
           <Newsroom
-            {...{ articles: visible, allArticles: articles, loading, error, hasMore, query, from, activePillar, pillars, pillarById }}
+            {...{ articles: visible, allArticles: articles, loading, error, hasMore, query, from, to, activePillar, sentiment, pillars, pillarById }}
             setQuery={setQuery}
             setFrom={setFrom}
+            setTo={setTo}
             setActivePillar={setActivePillar}
+            setSentiment={setSentiment}
             onSearch={() => loadNews(1, true)}
             onRefresh={() => loadNews(1, true)}
             onLoadMore={() => loadNews(page + 1, false)}
@@ -353,14 +359,21 @@ function Dashboard({ articles, pillars, pillarById, statuses, calendar, onGoNews
 
 // ── Newsroom ─────────────────────────────────────────────────────────────────
 function Newsroom(props) {
-  const { articles, allArticles, loading, error, hasMore, query, from, activePillar, pillars, pillarById,
-    setQuery, setFrom, setActivePillar, onSearch, onRefresh, onLoadMore, onOpen, statuses } = props;
+  const { articles, allArticles, loading, error, hasMore, query, from, to, activePillar, sentiment, pillars, pillarById,
+    setQuery, setFrom, setTo, setActivePillar, setSentiment, onSearch, onRefresh, onLoadMore, onOpen, statuses } = props;
 
   function quickRange(days) {
-    if (!days) { setFrom(''); return; }
-    const d = new Date(Date.now() - days * 86400000);
-    setFrom(d.toISOString().slice(0, 10));
+    if (!days) { setFrom(''); setTo(''); return; }
+    setFrom(new Date(Date.now() - days * 86400000).toISOString().slice(0, 10));
+    setTo(new Date().toISOString().slice(0, 10));
   }
+
+  const SENTS = [
+    { id: 'all', label: 'All sentiment' },
+    { id: 'positive', label: '▲ Bullish' },
+    { id: 'neutral', label: '◆ Neutral' },
+    { id: 'negative', label: '▼ Bearish' },
+  ];
 
   return (
     <>
@@ -382,14 +395,23 @@ function Newsroom(props) {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && onSearch()}
         />
-        <select value={from ? 'custom' : 'all'} onChange={(e) => quickRange(Number(e.target.value) || 0)}>
+        <select value={!from && !to ? '0' : 'custom'} onChange={(e) => quickRange(Number(e.target.value) || 0)} title="Quick date range">
           <option value="0">Any time</option>
           <option value="1">Past 24 hours</option>
           <option value="7">Past week</option>
           <option value="30">Past month</option>
         </select>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} title="From date" />
+        <label className="range-fld">From<input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label className="range-fld">To<input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></label>
         <button className="btn primary" onClick={onSearch} disabled={loading}>Search</button>
+      </div>
+
+      <div className="sent-filter">
+        {SENTS.map((s) => (
+          <button key={s.id} className={`pill ${sentiment === s.id ? 'active' : ''} sent-pill sent-${s.id}`} onClick={() => setSentiment(s.id)}>
+            {s.label} <span className="muted">{s.id === 'all' ? allArticles.length : allArticles.filter((a) => a.sentiment === s.id).length}</span>
+          </button>
+        ))}
       </div>
 
       <div className="pillars">
@@ -441,7 +463,7 @@ function StoryCard({ story, pillar, status, onOpen }) {
         {status && status !== 'draft' && <span className={`status ${status}`}>{status}</span>}
       </div>
       <h3>{story.title}</h3>
-      <p>{story.summary}</p>
+      {story.summary && story.summary !== story.title && <p>{story.summary}</p>}
       <div className="meta">
         <span className="src">{story.source}{story.publishedAt ? ` · ${timeAgo(story.publishedAt)}` : ''}</span>
         {story.stat && story.stat !== '—' && <span className="stat">{story.stat}</span>}

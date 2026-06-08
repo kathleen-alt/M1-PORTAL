@@ -31,6 +31,18 @@ export const PILLARS = [
 ];
 const PILLAR_IDS = PILLARS.map((p) => p.id);
 
+// Per-pillar search terms used to pull top stories for each topic.
+const PILLAR_QUERIES = {
+  'capital-markets': 'IPO OR "initial public offering" OR listing OR "capital raise" OR financing OR prospectus',
+  'mining-metals': 'mining OR gold OR copper OR lithium OR nickel OR silver OR "drill results"',
+  'energy-cleantech': 'energy OR oil OR "natural gas" OR solar OR battery OR renewables OR "energy storage"',
+  'tech-innovation': 'AI OR semiconductor OR chip OR software OR "artificial intelligence" OR technology',
+  'deals-ma': 'acquisition OR merger OR takeover OR "to acquire" OR "all-stock deal" OR buyout',
+  'macro-markets': '"S&P 500" OR Nasdaq OR "Federal Reserve" OR inflation OR "interest rates" OR "Dow Jones"',
+  'esg-governance': 'activist investor OR governance OR "board" OR ESG OR shareholder OR "proxy"',
+};
+const PILLAR_NL = Object.fromEntries(PILLARS.map((p) => [p.id, `${p.name} — ${p.blurb}`]));
+
 // Credible-domain allowlist used for NewsAPI sourcing.
 const SOURCE_ALLOWLIST = [
   'bnnbloomberg.ca', 'reuters.com', 'financialpost.com', 'cnbc.com', 'bloomberg.com',
@@ -278,6 +290,46 @@ async function fetchViaWebSearch({ query, from, to, count }) {
   return dedupe(articles);
 }
 
+// ── Top stories: ≥ perTopic per pillar ───────────────────────────────────────
+async function fetchTopByPillarNewsApi({ from, to, perTopic }) {
+  const batches = await Promise.all(
+    PILLARS.map(async (p) => {
+      try {
+        const { articles } = await fetchFromNewsApi({ query: PILLAR_QUERIES[p.id], from, to, page: 1, pageSize: Math.min(24, perTopic + 6) });
+        return articles.slice(0, perTopic + 4).map((a) => ({ ...a, _pillar: p.id }));
+      } catch {
+        return [];
+      }
+    }),
+  );
+  const flat = dedupe(batches.flat());
+  const classified = await classifyArticles(flat); // sentiment/summary/stat
+  const counts = {};
+  const out = [];
+  for (const a of classified) {
+    const pid = a._pillar || a.pillar; // trust the pillar we queried under
+    a.pillar = pid;
+    delete a._pillar;
+    counts[pid] = (counts[pid] || 0) + 1;
+    if (counts[pid] <= perTopic) out.push(a);
+  }
+  return out;
+}
+
+async function fetchTopByPillarWebSearch({ from, to, perTopic }) {
+  const batches = await Promise.all(
+    PILLARS.map(async (p) => {
+      try {
+        const arts = await fetchViaWebSearch({ query: PILLAR_NL[p.id], from, to, count: perTopic });
+        return arts.slice(0, perTopic).map((a) => ({ ...a, pillar: p.id }));
+      } catch {
+        return [];
+      }
+    }),
+  );
+  return dedupe(batches.flat());
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 const app = express();
 app.use(cors());
@@ -311,9 +363,16 @@ app.get('/api/news', async (req, res) => {
   const to = (req.query.to || '').toString();
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(24, Math.max(6, parseInt(req.query.pageSize, 10) || 12));
+  const perTopic = Math.min(20, Math.max(0, parseInt(req.query.perTopic, 10) || 0));
+  // Default "top stories" view (no search query): pull ≥ perTopic per pillar.
+  const topMode = perTopic > 0 && !query.trim() && page === 1;
 
   try {
     if (NEWS_API_KEY) {
+      if (topMode) {
+        const articles = await fetchTopByPillarNewsApi({ from, to, perTopic });
+        return res.json({ articles, page: 1, hasMore: false, sourcing: 'newsapi', perTopic });
+      }
       const { articles, totalResults } = await fetchFromNewsApi({ query, from, to, page, pageSize });
       const classified = await classifyArticles(articles);
       return res.json({
@@ -322,6 +381,10 @@ app.get('/api/news', async (req, res) => {
         hasMore: page * pageSize < totalResults && articles.length > 0,
         sourcing: 'newsapi',
       });
+    }
+    if (topMode) {
+      const articles = await fetchTopByPillarWebSearch({ from, to, perTopic });
+      return res.json({ articles, page: 1, hasMore: false, sourcing: 'web-search', perTopic });
     }
     const articles = await fetchViaWebSearch({ query, from, to, count: pageSize });
     return res.json({

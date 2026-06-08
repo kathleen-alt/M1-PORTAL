@@ -119,6 +119,12 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 /* ── Newsroom toolbar ── */
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
 .toolbar .grow { flex: 1; min-width: 220px; }
+.range-fld { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); font-weight: 700; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px 6px 4px 11px; background: var(--ink-2); }
+.range-fld input { border: 0; background: transparent; padding: 4px 2px; }
+.sent-filter { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.sent-pill.active.sent-positive { background: rgba(34,197,94,0.16); border-color: var(--good); color: #6ee7a8; }
+.sent-pill.active.sent-negative { background: rgba(248,113,113,0.16); border-color: var(--bad); color: #fda4a4; }
+.sent-pill.active.sent-neutral { background: rgba(141,153,181,0.18); border-color: var(--muted); color: var(--text); }
 .pillars { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
 .pill {
   border: 1px solid var(--line); background: var(--panel); color: var(--text-dim);
@@ -197,16 +203,16 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 .cal-month { margin-bottom: 18px; }
 .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px; }
 .cal-weekdays > div { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; text-align: center; }
-.cal-cells { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.cal-cell { min-height: 92px; background: var(--ink-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.cal-cells { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.cal-cell { min-width: 0; min-height: 96px; background: var(--ink-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
 .cal-cell.dim { opacity: 0.4; }
 .cal-cell.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.cal-cell .num { font-size: 12px; color: var(--muted); font-weight: 700; padding: 1px 3px; }
-.cal-chip { display: flex; align-items: center; gap: 5px; width: 100%; text-align: left; border: 0; border-radius: 6px; padding: 4px 6px; background: color-mix(in srgb, var(--c, var(--accent)) 16%, transparent); color: var(--text); font-size: 11px; font-weight: 600; cursor: pointer; overflow: hidden; }
+.cal-cell .num { font-size: 12px; color: var(--muted); font-weight: 700; padding: 1px 3px; flex-shrink: 0; }
+.cal-chip { display: flex; align-items: center; gap: 5px; width: 100%; max-width: 100%; min-width: 0; text-align: left; border: 0; border-radius: 6px; padding: 4px 6px; background: color-mix(in srgb, var(--c, var(--accent)) 16%, transparent); color: var(--text); font-size: 11px; font-weight: 600; cursor: pointer; overflow: hidden; flex-shrink: 0; }
 .cal-chip:hover { background: color-mix(in srgb, var(--c, var(--accent)) 28%, transparent); }
 .cal-chip.pub { outline: 1px solid color-mix(in srgb, var(--c, var(--accent)) 60%, transparent); }
 .cal-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--accent)); flex-shrink: 0; }
-.cal-chip .chip-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-chip .chip-txt { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-list { display: grid; gap: 12px; }
 .cal-item { display: grid; grid-template-columns: 90px 1fr auto; gap: 14px; align-items: center; padding: 14px 16px; }
 .cal-date { font-family: var(--serif); font-size: 13px; color: var(--accent-2); font-weight: 700; }
