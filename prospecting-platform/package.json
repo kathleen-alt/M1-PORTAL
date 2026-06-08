@@ -1,0 +1,25 @@
+{
+  "name": "m1-prospecting-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Market One — Public Company Prospecting & Outreach Platform. Company database + contact enrichment + signal/trigger monitoring + CRM + email sequencing for agencies serving publicly traded companies.",
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm --workspace server run dev",
+    "dev:client": "npm --workspace client run dev",
+    "build": "npm --workspace client run build",
+    "start": "npm --workspace server start",
+    "lint": "echo \"(no linter configured)\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
