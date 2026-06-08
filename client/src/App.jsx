@@ -592,11 +592,19 @@ const GRAPHIC_FORMATS = {
   link: { w: 1200, h: 630, label: 'Link card' },
 };
 
-function wrapText(text, maxChars) {
-  const words = (text || '').split(/\s+/);
+function wrapText(text, maxChars, maxLines = 6) {
+  const words = (text || '').split(/\s+/).filter(Boolean);
   const lines = [];
   let line = '';
   for (const w of words) {
+    // Hard-break a single word longer than the line budget so it can't overflow.
+    if (w.length > maxChars) {
+      if (line) { lines.push(line.trim()); line = ''; }
+      let rest = w;
+      while (rest.length > maxChars) { lines.push(rest.slice(0, maxChars - 1) + '-'); rest = rest.slice(maxChars - 1); }
+      line = rest;
+      continue;
+    }
     if ((line + ' ' + w).trim().length > maxChars) {
       if (line) lines.push(line.trim());
       line = w;
@@ -605,7 +613,12 @@ function wrapText(text, maxChars) {
     }
   }
   if (line) lines.push(line.trim());
-  return lines.slice(0, 6);
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = kept[maxLines - 1].replace(/[.,;:]?$/, '') + '…';
+    return kept;
+  }
+  return lines;
 }
 
 function BrandedGraphic({ story, pillar, onToast }) {
@@ -628,11 +641,46 @@ function BrandedGraphic({ story, pillar, onToast }) {
   const accent = pillar?.accent || '#3B82F6';
   const dims = GRAPHIC_FORMATS[fmt];
   const isWide = dims.w >= dims.h;
-  const pad = isWide ? 90 : 80;
-  const maxChars = isWide ? 26 : 18;
-  const headlineSize = isWide ? 78 : dims.h > 1400 ? 86 : 74;
-  const lines = wrapText(headline, maxChars);
-  const headlineBlockTop = dims.h * (dims.h > 1400 ? 0.5 : 0.46);
+  const M = isWide ? 84 : 76;              // safe margin on every edge
+  const availW = dims.w - M * 2;
+
+  // Footer (wordmark + source) is pinned to the bottom; everything stacks above it.
+  const footerY = dims.h - M;
+  const hasStat = showStat && story.stat && story.stat !== '—';
+  const statH = 70;
+  let contentBottom = footerY - 64;        // content must stay above the footer
+  let statTop = null;
+  if (hasStat) { statTop = contentBottom - statH; contentBottom = statTop - 28; }
+
+  // Reserve room above the headline for the accent rule + eyebrow.
+  const topLimit = M + (showEyebrow ? 92 : 40);
+  const availH = Math.max(120, contentBottom - topLimit);
+
+  // Adaptively shrink the headline until it fits the available width AND height.
+  const maxHead = isWide ? 76 : dims.h > 1400 ? 84 : 72;
+  const charW = 0.53;                      // avg glyph-width factor for the bold serif
+  const fit = (() => {
+    for (let fs = maxHead; fs >= 26; fs -= 2) {
+      const cpl = Math.max(6, Math.floor(availW / (fs * charW)));
+      const ls = wrapText(headline, cpl, 8);
+      const lh = fs * 1.06;
+      const widest = ls.reduce((m, l) => Math.max(m, l.length * fs * charW), 0);
+      if (ls.length * lh <= availH && widest <= availW) return { fs, ls, lh };
+    }
+    const fs = 26, lh = fs * 1.06;
+    const cpl = Math.max(6, Math.floor(availW / (fs * charW)));
+    const ls = wrapText(headline, cpl, Math.max(1, Math.floor(availH / lh)));
+    return { fs, ls, lh };
+  })();
+
+  const lines = fit.ls;
+  const headlineSize = fit.fs;
+  const firstBaseline = contentBottom - (lines.length - 1) * fit.lh; // bottom-aligned block
+  const headlineTopY = firstBaseline - headlineSize;
+  const eyebrowY = headlineTopY - 24;
+  const ruleY = eyebrowY - 30;
+  const eyebrowMax = Math.max(8, Math.floor(availW / 22));
+  const statW = hasStat ? Math.min(availW, 44 + String(story.stat).length * 26) : 0;
 
   function onUpload(e) {
     const file = e.target.files?.[0];
@@ -691,39 +739,39 @@ function BrandedGraphic({ story, pillar, onToast }) {
             <rect width={dims.w} height={dims.h} fill="url(#g-overlay)" />
 
             {/* Accent rule */}
-            <rect x={pad} y={headlineBlockTop - 46} width="64" height="6" rx="3" fill={accent} />
+            <rect x={M} y={ruleY} width="64" height="6" rx="3" fill={accent} />
 
             {/* Eyebrow */}
             {showEyebrow && (
-              <text x={pad} y={headlineBlockTop - 70} fill={accent} fontFamily="Franklin Gothic, Arial, sans-serif" fontSize={isWide ? 30 : 28} fontWeight="700" letterSpacing="4">
-                {eyebrow.slice(0, 40)}
+              <text x={M} y={eyebrowY} fill={accent} fontFamily="Franklin Gothic, Arial, sans-serif" fontSize={isWide ? 30 : 28} fontWeight="700" letterSpacing="4">
+                {eyebrow.slice(0, eyebrowMax)}
               </text>
             )}
 
-            {/* Headline */}
-            <text x={pad} y={headlineBlockTop + headlineSize} fill="#ffffff" fontFamily="Georgia, 'Superior Title', serif" fontSize={headlineSize} fontWeight="700" letterSpacing="-1">
+            {/* Headline (adaptively sized + bottom-anchored so it never overflows) */}
+            <text x={M} y={firstBaseline} fill="#ffffff" fontFamily="Georgia, 'Superior Title', serif" fontSize={headlineSize} fontWeight="700" letterSpacing="-1">
               {lines.map((ln, i) => (
-                <tspan key={i} x={pad} dy={i === 0 ? 0 : headlineSize * 1.06}>{ln}</tspan>
+                <tspan key={i} x={M} dy={i === 0 ? 0 : fit.lh}>{ln}</tspan>
               ))}
             </text>
 
             {/* Stat block */}
-            {showStat && story.stat && story.stat !== '—' && (
+            {hasStat && (
               <g>
-                <rect x={pad} y={headlineBlockTop + headlineSize + lines.length * headlineSize * 1.06 - headlineSize + 30} width={Math.min(dims.w - pad * 2, 30 + story.stat.length * 26)} height="76" rx="12" fill={accent} fillOpacity="0.16" stroke={accent} strokeOpacity="0.5" />
-                <text x={pad + 26} y={headlineBlockTop + headlineSize + lines.length * headlineSize * 1.06 - headlineSize + 82} fill={accent} fontFamily="Georgia, serif" fontSize="42" fontWeight="700">{story.stat.slice(0, 30)}</text>
+                <rect x={M} y={statTop} width={statW} height={statH} rx="12" fill={accent} fillOpacity="0.16" stroke={accent} strokeOpacity="0.5" />
+                <text x={M + 24} y={statTop + statH / 2 + 15} fill={accent} fontFamily="Georgia, serif" fontSize="42" fontWeight="700">{String(story.stat).slice(0, 24)}</text>
               </g>
             )}
 
             {/* Footer: wordmark + source */}
             <g>
-              <path d={`M${pad} ${dims.h - pad + 6} V${dims.h - pad - 30} l 16 26 l 16 -26 V${dims.h - pad + 6}`} fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx={pad + 46} cy={dims.h - pad - 26} r="6" fill={accent} />
-              <text x={pad + 60} y={dims.h - pad + 4} fill="#ffffff" fontFamily="Georgia, serif" fontSize="36" fontWeight="700">Market<tspan fill={accent}>One</tspan></text>
+              <path d={`M${M} ${footerY + 6} V${footerY - 30} l 16 26 l 16 -26 V${footerY + 6}`} fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx={M + 46} cy={footerY - 26} r="6" fill={accent} />
+              <text x={M + 60} y={footerY + 4} fill="#ffffff" fontFamily="Georgia, serif" fontSize="36" fontWeight="700">Market<tspan fill={accent}>One</tspan></text>
             </g>
             {showSource && (
-              <text x={dims.w - pad} y={dims.h - pad + 2} textAnchor="end" fill="#c4ccde" fontFamily="Franklin Gothic, Arial, sans-serif" fontSize="26" letterSpacing="1">
-                Source: {(story.source || '').slice(0, 28)}
+              <text x={dims.w - M} y={footerY + 4} textAnchor="end" fill="#c4ccde" fontFamily="Franklin Gothic, Arial, sans-serif" fontSize="26" letterSpacing="1">
+                Source: {(story.source || '').slice(0, 26)}
               </text>
             )}
           </svg>
