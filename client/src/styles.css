@@ -192,9 +192,41 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 .switch.on::after { left: 18px; }
 
 /* ── Calendar ── */
-.cal-grid { display: grid; gap: 12px; }
+.cal-nav { display: flex; align-items: center; gap: 8px; }
+.cal-month-label { font-family: var(--serif); font-size: 16px; min-width: 150px; text-align: center; }
+.cal-month { margin-bottom: 18px; }
+.cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px; }
+.cal-weekdays > div { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; text-align: center; }
+.cal-cells { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.cal-cell { min-height: 92px; background: var(--ink-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.cal-cell.dim { opacity: 0.4; }
+.cal-cell.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.cal-cell .num { font-size: 12px; color: var(--muted); font-weight: 700; padding: 1px 3px; }
+.cal-chip { display: flex; align-items: center; gap: 5px; width: 100%; text-align: left; border: 0; border-radius: 6px; padding: 4px 6px; background: color-mix(in srgb, var(--c, var(--accent)) 16%, transparent); color: var(--text); font-size: 11px; font-weight: 600; cursor: pointer; overflow: hidden; }
+.cal-chip:hover { background: color-mix(in srgb, var(--c, var(--accent)) 28%, transparent); }
+.cal-chip.pub { outline: 1px solid color-mix(in srgb, var(--c, var(--accent)) 60%, transparent); }
+.cal-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--accent)); flex-shrink: 0; }
+.cal-chip .chip-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-list { display: grid; gap: 12px; }
 .cal-item { display: grid; grid-template-columns: 90px 1fr auto; gap: 14px; align-items: center; padding: 14px 16px; }
 .cal-date { font-family: var(--serif); font-size: 13px; color: var(--accent-2); font-weight: 700; }
+.pub-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+
+/* ── Modal + post preview ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(5, 8, 15, 0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
+.modal { width: min(820px, 96vw); max-height: 90vh; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.modal-head b { font-family: var(--serif); font-size: 18px; }
+.preview-grid { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
+.preview-left { display: flex; flex-direction: column; gap: 12px; }
+.post-card { background: var(--ink-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.post-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.post-card-head .av { width: 38px; height: 38px; border-radius: 9px; background: linear-gradient(120deg, var(--accent), var(--accent-2)); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; flex-shrink: 0; }
+.post-card-body { white-space: pre-wrap; font-size: 14px; line-height: 1.6; color: var(--text); }
+.post-link { display: inline-block; margin-top: 12px; color: var(--accent); text-decoration: none; font-weight: 600; font-size: 13px; }
+.post-link:hover { text-decoration: underline; }
+.preview-right svg { width: 100%; height: auto; border-radius: 10px; box-shadow: var(--shadow); }
+@media (max-width: 720px) { .preview-grid { grid-template-columns: 1fr; } }
 
 /* ── Slack ── */
 .slack-feed { display: flex; flex-direction: column; gap: 10px; }

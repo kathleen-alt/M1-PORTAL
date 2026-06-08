@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { demo, initialDemoFromUrl } from './demo';
 
 // Seed demo mode from the URL (?demo=1) before any API call runs.
@@ -155,13 +155,28 @@ export default function App() {
     setStatuses((s) => ({ ...s, [id]: status }));
   }
 
-  function scheduleStory(story, dateStr, channel) {
+  function scheduleStory(story, dateStr, channel, extra = {}) {
     setCalendar((c) => {
       // De-dupe identical story+channel+date entries so repeat clicks don't pile up.
-      if (c.some((x) => x.storyId === story.id && x.channel === channel && x.date === dateStr)) return c;
-      return [...c, { id: `${story.id}-${channel}-${dateStr}`, storyId: story.id, title: story.title, date: dateStr, channel }]
-        .sort((a, b) => new Date(a.date) - new Date(b.date));
+      const existing = c.find((x) => x.storyId === story.id && x.channel === channel && x.date === dateStr);
+      if (existing) {
+        // Refresh its captured copy/published state instead of adding a duplicate.
+        return c.map((x) => (x === existing ? { ...x, ...extra, copy: extra.copy ?? x.copy, format: extra.format ?? x.format } : x));
+      }
+      return [...c, {
+        id: `${story.id}-${channel}-${dateStr}`,
+        storyId: story.id, title: story.title, date: dateStr, channel,
+        copy: extra.copy || '', format: extra.format || '', published: Boolean(extra.published),
+      }].sort((a, b) => new Date(a.date) - new Date(b.date));
     });
+  }
+
+  function setEntryPublished(entry, val) {
+    setCalendar((c) => c.map((x) => (x.id === entry.id ? { ...x, published: val } : x)));
+    setStatuses((s) => ({
+      ...s,
+      [entry.storyId]: val ? 'published' : s[entry.storyId] === 'published' ? 'approved' : s[entry.storyId] || 'draft',
+    }));
   }
 
   const visible = activePillar === 'all' ? articles : articles.filter((a) => a.pillar === activePillar);
@@ -232,20 +247,22 @@ export default function App() {
               if (!selected) return;
               setStatus(selected.id, st);
               if (st === 'approved') { pushSlack(`✅ *Approved for publishing:* "${selected.title}" — ${pillarById[selected.pillar]?.name || ''}`); flash('Approved — Slack alert sent'); }
-              if (st === 'published') {
-                pushSlack(`🚀 *Published:* "${selected.title}" (${selected.source}) ${selected.url}`);
-                scheduleStory(selected, new Date().toISOString().slice(0, 10), 'Published');
-                flash('Published → added to calendar');
-              }
             }}
-            onSchedule={(dateStr, channel) => { scheduleStory(selected, dateStr, channel); pushSlack(`🗓️ *Scheduled* "${selected.title}" → ${channel} on ${dateStr}`); flash('Added to calendar'); }}
+            onPublish={(post) => {
+              if (!selected) return;
+              setStatus(selected.id, 'published');
+              pushSlack(`🚀 *Published:* "${selected.title}" (${selected.source}) ${selected.url}`);
+              scheduleStory(selected, new Date().toISOString().slice(0, 10), post.channel || 'Published', { ...post, published: true });
+              flash('Published → added to calendar');
+            }}
+            onSchedule={(dateStr, channel, post) => { scheduleStory(selected, dateStr, channel, post); pushSlack(`🗓️ *Scheduled* "${selected.title}" → ${channel} on ${dateStr}`); flash('Added to calendar'); }}
             onToast={flash}
             onBack={() => setTab('Newsroom')}
           />
         )}
 
         {tab === 'Calendar' && (
-          <Calendar items={calendar} pillarById={pillarById} articles={articles} statuses={statuses} />
+          <Calendar items={calendar} pillarById={pillarById} articles={articles} statuses={statuses} onSetPublished={setEntryPublished} />
         )}
 
         {tab === 'Slack' && (
@@ -438,7 +455,7 @@ function StoryCard({ story, pillar, status, onOpen }) {
 }
 
 // ── Studio ───────────────────────────────────────────────────────────────────
-function Studio({ story, pillarById, status, onStatus, onSchedule, onToast, onBack }) {
+function Studio({ story, pillarById, status, onStatus, onPublish, onSchedule, onToast, onBack }) {
   const [analysis, setAnalysis] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [format, setFormat] = useState('linkedin');
@@ -538,7 +555,7 @@ function Studio({ story, pillarById, status, onStatus, onSchedule, onToast, onBa
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn" onClick={() => onStatus('draft')}>Mark draft</button>
               <button className="btn" onClick={() => onStatus('approved')} style={{ borderColor: 'var(--good)' }}>✓ Approve</button>
-              <button className="btn primary" onClick={() => onStatus('published')}>🚀 Push to publish</button>
+              <button className="btn primary" onClick={() => onPublish({ copy, format, channel: 'Published' })}>🚀 Push to publish</button>
             </div>
             <div className="section-label" style={{ marginTop: 16 }}>Schedule</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -548,7 +565,7 @@ function Studio({ story, pillarById, status, onStatus, onSchedule, onToast, onBa
                   <option>LinkedIn</option><option>X / Twitter</option><option>Instagram</option><option>Newsletter</option><option>Blog</option>
                 </select>
               </label>
-              <button className="btn" onClick={() => onSchedule(schedDate, schedChannel)}>Add to calendar</button>
+              <button className="btn" onClick={() => onSchedule(schedDate, schedChannel, { copy, format })}>Add to calendar</button>
             </div>
           </div>
         </div>
@@ -627,6 +644,97 @@ function wrapText(text, maxChars, maxLines = 6) {
   return lines;
 }
 
+// Reusable branded-graphic SVG (used by the Studio editor and the post preview).
+function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEyebrow = true, showStat = true, showSource = true, headline, eyebrow, bgImage = null, innerRef }) {
+  const uid = useId().replace(/:/g, '');
+  const accent = pillar?.accent || '#3B82F6';
+  const dims = GRAPHIC_FORMATS[fmt] || GRAPHIC_FORMATS.square;
+  const isWide = dims.w >= dims.h;
+  const head = (headline ?? story?.title) || '';
+  const eb = String(eyebrow ?? pillar?.name ?? 'Market One').toUpperCase();
+  const stat = story?.stat;
+  const M = isWide ? 84 : 76;
+  const availW = dims.w - M * 2;
+  const footerY = dims.h - M;
+  const hasStat = showStat && stat && stat !== '—';
+  const statH = 70;
+  let contentBottom = footerY - 64;
+  let statTop = null;
+  if (hasStat) { statTop = contentBottom - statH; contentBottom = statTop - 28; }
+  const topLimit = M + (showEyebrow ? 92 : 40);
+  const availH = Math.max(120, contentBottom - topLimit);
+  const maxHead = isWide ? 76 : dims.h > 1400 ? 84 : 72;
+  const charW = 0.53;
+  const fit = (() => {
+    for (let fs = maxHead; fs >= 26; fs -= 2) {
+      const cpl = Math.max(6, Math.floor(availW / (fs * charW)));
+      const ls = wrapText(head, cpl, 8);
+      const lh = fs * 1.06;
+      const widest = ls.reduce((m, l) => Math.max(m, l.length * fs * charW), 0);
+      if (ls.length * lh <= availH && widest <= availW) return { fs, ls, lh };
+    }
+    const fs = 26, lh = fs * 1.06;
+    const cpl = Math.max(6, Math.floor(availW / (fs * charW)));
+    const ls = wrapText(head, cpl, Math.max(1, Math.floor(availH / lh)));
+    return { fs, ls, lh };
+  })();
+  const lines = fit.ls;
+  const headlineSize = fit.fs;
+  const firstBaseline = contentBottom - (lines.length - 1) * fit.lh;
+  const eyebrowY = firstBaseline - headlineSize - 24;
+  const ruleY = eyebrowY - 30;
+  const eyebrowMax = Math.max(8, Math.floor(availW / 22));
+  const statW = hasStat ? Math.min(availW, 44 + String(stat).length * 26) : 0;
+
+  return (
+    <svg ref={innerRef} viewBox={`0 0 ${dims.w} ${dims.h}`} width={dims.w} height={dims.h} xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id={`ov-${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#0b0f1a" stopOpacity={gradient === 'bold' ? 0.35 : gradient === 'soft' ? 0.15 : 0} />
+          <stop offset="0.55" stopColor="#0b0f1a" stopOpacity={gradient === 'bold' ? 0.65 : gradient === 'soft' ? 0.45 : 0.2} />
+          <stop offset="1" stopColor="#0b0f1a" stopOpacity={gradient === 'bold' ? 0.97 : gradient === 'soft' ? 0.9 : 0.75} />
+        </linearGradient>
+        <linearGradient id={`mesh-${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={accent} stopOpacity="0.55" />
+          <stop offset="1" stopColor="#06b6d4" stopOpacity="0.25" />
+        </linearGradient>
+      </defs>
+      <rect width={dims.w} height={dims.h} fill="#0b0f1a" />
+      {bgImage
+        ? <image href={bgImage} width={dims.w} height={dims.h} preserveAspectRatio="xMidYMid slice" />
+        : <rect width={dims.w} height={dims.h} fill={`url(#mesh-${uid})`} />}
+      <rect width={dims.w} height={dims.h} fill={`url(#ov-${uid})`} />
+      <rect x={M} y={ruleY} width="64" height="6" rx="3" fill={accent} />
+      {showEyebrow && (
+        <text x={M} y={eyebrowY} fill={accent} fontFamily="Franklin Gothic, Arial, sans-serif" fontSize={isWide ? 30 : 28} fontWeight="700" letterSpacing="4">
+          {eb.slice(0, eyebrowMax)}
+        </text>
+      )}
+      <text x={M} y={firstBaseline} fill="#ffffff" fontFamily="Georgia, 'Superior Title', serif" fontSize={headlineSize} fontWeight="700" letterSpacing="-1">
+        {lines.map((ln, i) => (
+          <tspan key={i} x={M} dy={i === 0 ? 0 : fit.lh}>{ln}</tspan>
+        ))}
+      </text>
+      {hasStat && (
+        <g>
+          <rect x={M} y={statTop} width={statW} height={statH} rx="12" fill={accent} fillOpacity="0.16" stroke={accent} strokeOpacity="0.5" />
+          <text x={M + 24} y={statTop + statH / 2 + 15} fill={accent} fontFamily="Georgia, serif" fontSize="42" fontWeight="700">{String(stat).slice(0, 24)}</text>
+        </g>
+      )}
+      <g>
+        <path d={`M${M} ${footerY + 6} V${footerY - 30} l 16 26 l 16 -26 V${footerY + 6}`} fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx={M + 46} cy={footerY - 26} r="6" fill={accent} />
+        <text x={M + 60} y={footerY + 4} fill="#ffffff" fontFamily="Georgia, serif" fontSize="36" fontWeight="700">Market<tspan fill={accent}>One</tspan></text>
+      </g>
+      {showSource && (
+        <text x={dims.w - M} y={footerY + 4} textAnchor="end" fill="#c4ccde" fontFamily="Franklin Gothic, Arial, sans-serif" fontSize="26" letterSpacing="1">
+          Source: {(story?.source || '').slice(0, 26)}
+        </text>
+      )}
+    </svg>
+  );
+}
+
 function BrandedGraphic({ story, pillar, onToast }) {
   const svgRef = useRef(null);
   const [fmt, setFmt] = useState('square');
@@ -643,50 +751,6 @@ function BrandedGraphic({ story, pillar, onToast }) {
     setHeadline(story.title);
     setEyebrow((pillar?.name || 'Market One').toUpperCase());
   }, [story.id, pillar?.name]);
-
-  const accent = pillar?.accent || '#3B82F6';
-  const dims = GRAPHIC_FORMATS[fmt];
-  const isWide = dims.w >= dims.h;
-  const M = isWide ? 84 : 76;              // safe margin on every edge
-  const availW = dims.w - M * 2;
-
-  // Footer (wordmark + source) is pinned to the bottom; everything stacks above it.
-  const footerY = dims.h - M;
-  const hasStat = showStat && story.stat && story.stat !== '—';
-  const statH = 70;
-  let contentBottom = footerY - 64;        // content must stay above the footer
-  let statTop = null;
-  if (hasStat) { statTop = contentBottom - statH; contentBottom = statTop - 28; }
-
-  // Reserve room above the headline for the accent rule + eyebrow.
-  const topLimit = M + (showEyebrow ? 92 : 40);
-  const availH = Math.max(120, contentBottom - topLimit);
-
-  // Adaptively shrink the headline until it fits the available width AND height.
-  const maxHead = isWide ? 76 : dims.h > 1400 ? 84 : 72;
-  const charW = 0.53;                      // avg glyph-width factor for the bold serif
-  const fit = (() => {
-    for (let fs = maxHead; fs >= 26; fs -= 2) {
-      const cpl = Math.max(6, Math.floor(availW / (fs * charW)));
-      const ls = wrapText(headline, cpl, 8);
-      const lh = fs * 1.06;
-      const widest = ls.reduce((m, l) => Math.max(m, l.length * fs * charW), 0);
-      if (ls.length * lh <= availH && widest <= availW) return { fs, ls, lh };
-    }
-    const fs = 26, lh = fs * 1.06;
-    const cpl = Math.max(6, Math.floor(availW / (fs * charW)));
-    const ls = wrapText(headline, cpl, Math.max(1, Math.floor(availH / lh)));
-    return { fs, ls, lh };
-  })();
-
-  const lines = fit.ls;
-  const headlineSize = fit.fs;
-  const firstBaseline = contentBottom - (lines.length - 1) * fit.lh; // bottom-aligned block
-  const headlineTopY = firstBaseline - headlineSize;
-  const eyebrowY = headlineTopY - 24;
-  const ruleY = eyebrowY - 30;
-  const eyebrowMax = Math.max(8, Math.floor(availW / 22));
-  const statW = hasStat ? Math.min(availW, 44 + String(story.stat).length * 26) : 0;
 
   function onUpload(e) {
     const file = e.target.files?.[0];
@@ -724,63 +788,19 @@ function BrandedGraphic({ story, pillar, onToast }) {
       <div className="section-label">Branded graphic</div>
       <div className="graphic-wrap">
         <div className="graphic-stage">
-          <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} width={dims.w} height={dims.h} xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="g-overlay" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor="#0b0f1a" stopOpacity={gradient === 'bold' ? 0.35 : gradient === 'soft' ? 0.15 : 0} />
-                <stop offset="0.55" stopColor="#0b0f1a" stopOpacity={gradient === 'bold' ? 0.65 : gradient === 'soft' ? 0.45 : 0.2} />
-                <stop offset="1" stopColor="#0b0f1a" stopOpacity={gradient === 'bold' ? 0.97 : gradient === 'soft' ? 0.9 : 0.75} />
-              </linearGradient>
-              <linearGradient id="g-mesh" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor={accent} stopOpacity="0.55" />
-                <stop offset="1" stopColor="#06b6d4" stopOpacity="0.25" />
-              </linearGradient>
-            </defs>
-
-            {/* Background */}
-            <rect width={dims.w} height={dims.h} fill="#0b0f1a" />
-            {bgImage
-              ? <image href={bgImage} width={dims.w} height={dims.h} preserveAspectRatio="xMidYMid slice" />
-              : <rect width={dims.w} height={dims.h} fill="url(#g-mesh)" />}
-            <rect width={dims.w} height={dims.h} fill="url(#g-overlay)" />
-
-            {/* Accent rule */}
-            <rect x={M} y={ruleY} width="64" height="6" rx="3" fill={accent} />
-
-            {/* Eyebrow */}
-            {showEyebrow && (
-              <text x={M} y={eyebrowY} fill={accent} fontFamily="Franklin Gothic, Arial, sans-serif" fontSize={isWide ? 30 : 28} fontWeight="700" letterSpacing="4">
-                {eyebrow.slice(0, eyebrowMax)}
-              </text>
-            )}
-
-            {/* Headline (adaptively sized + bottom-anchored so it never overflows) */}
-            <text x={M} y={firstBaseline} fill="#ffffff" fontFamily="Georgia, 'Superior Title', serif" fontSize={headlineSize} fontWeight="700" letterSpacing="-1">
-              {lines.map((ln, i) => (
-                <tspan key={i} x={M} dy={i === 0 ? 0 : fit.lh}>{ln}</tspan>
-              ))}
-            </text>
-
-            {/* Stat block */}
-            {hasStat && (
-              <g>
-                <rect x={M} y={statTop} width={statW} height={statH} rx="12" fill={accent} fillOpacity="0.16" stroke={accent} strokeOpacity="0.5" />
-                <text x={M + 24} y={statTop + statH / 2 + 15} fill={accent} fontFamily="Georgia, serif" fontSize="42" fontWeight="700">{String(story.stat).slice(0, 24)}</text>
-              </g>
-            )}
-
-            {/* Footer: wordmark + source */}
-            <g>
-              <path d={`M${M} ${footerY + 6} V${footerY - 30} l 16 26 l 16 -26 V${footerY + 6}`} fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx={M + 46} cy={footerY - 26} r="6" fill={accent} />
-              <text x={M + 60} y={footerY + 4} fill="#ffffff" fontFamily="Georgia, serif" fontSize="36" fontWeight="700">Market<tspan fill={accent}>One</tspan></text>
-            </g>
-            {showSource && (
-              <text x={dims.w - M} y={footerY + 4} textAnchor="end" fill="#c4ccde" fontFamily="Franklin Gothic, Arial, sans-serif" fontSize="26" letterSpacing="1">
-                Source: {(story.source || '').slice(0, 26)}
-              </text>
-            )}
-          </svg>
+          <PostGraphic
+            innerRef={svgRef}
+            story={story}
+            pillar={pillar}
+            fmt={fmt}
+            gradient={gradient}
+            showEyebrow={showEyebrow}
+            showStat={showStat}
+            showSource={showSource}
+            headline={headline}
+            eyebrow={eyebrow}
+            bgImage={bgImage}
+          />
         </div>
 
         <div className="controls">
@@ -826,42 +846,173 @@ function Toggle({ label, on, set }) {
 }
 
 // ── Calendar ─────────────────────────────────────────────────────────────────
-function Calendar({ items, pillarById, articles, statuses }) {
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function monthMatrix(cursor) {
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(1 - first.getDay()); // back up to the Sunday
+  const weeks = [];
+  for (let w = 0; w < 6; w++) {
+    const row = [];
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(start);
+      day.setDate(start.getDate() + w * 7 + d);
+      row.push(day);
+    }
+    weeks.push(row);
+  }
+  return weeks;
+}
+
+function Calendar({ items, pillarById, articles, statuses, onSetPublished }) {
   const byId = Object.fromEntries(articles.map((a) => [a.id, a]));
+  const [preview, setPreview] = useState(null);
+  const [cursor, setCursor] = useState(() => {
+    const base = items.length ? new Date(items[0].date) : new Date();
+    return new Date(base.getFullYear(), base.getMonth(), 1);
+  });
+
+  const byDate = useMemo(() => {
+    const m = {};
+    for (const it of items) (m[it.date] ||= []).push(it);
+    return m;
+  }, [items]);
+
+  const weeks = monthMatrix(cursor);
+  const monthLabel = cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const todayStr = ymd(new Date());
+
+  const openPreview = (it) => setPreview({ it, story: byId[it.storyId], pillar: byId[it.storyId] ? pillarById[byId[it.storyId].pillar] : null });
+
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Publishing calendar</h1>
-          <p>Everything scheduled from the studio. In production, wire this to a DB so the plan persists across sessions.</p>
+          <p>Everything scheduled or published from the studio. Click any post to preview it and toggle whether it’s published.</p>
+        </div>
+        <div className="cal-nav">
+          <button className="btn sm" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}>‹</button>
+          <span className="cal-month-label">{monthLabel}</span>
+          <button className="btn sm" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}>›</button>
+          <button className="btn sm ghost" onClick={() => { const n = new Date(); setCursor(new Date(n.getFullYear(), n.getMonth(), 1)); }}>Today</button>
         </div>
       </div>
-      {items.length === 0 ? (
-        <div className="empty">Nothing scheduled yet. Approve a story in the studio and add it to the calendar.</div>
-      ) : (
-        <div className="cal-grid">
-          {items.map((it) => {
-            const story = byId[it.storyId];
-            const pillar = story ? pillarById[story.pillar] : null;
+
+      {items.length === 0 && (
+        <div className="banner">Nothing scheduled yet. Open a story in the studio, then <b>Add to calendar</b> or <b>Push to publish</b>.</div>
+      )}
+
+      {/* Month grid */}
+      <div className="panel pad cal-month">
+        <div className="cal-weekdays">{WEEKDAYS.map((w) => <div key={w}>{w}</div>)}</div>
+        <div className="cal-cells">
+          {weeks.flat().map((day, i) => {
+            const ds = ymd(day);
+            const inMonth = day.getMonth() === cursor.getMonth();
+            const dayItems = byDate[ds] || [];
             return (
-              <div className="panel cal-item" key={it.id}>
-                <div className="cal-date">{new Date(it.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{it.title}</div>
-                  <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-                    {it.channel}{pillar ? ` · ${pillar.name}` : ''}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {story && <span className={`status ${statuses[story.id] || 'draft'}`}>{statuses[story.id] || 'draft'}</span>}
-                  {story && <a className="link" href={story.url} target="_blank" rel="noreferrer">Source ↗</a>}
-                </div>
+              <div key={i} className={`cal-cell ${inMonth ? '' : 'dim'} ${ds === todayStr ? 'today' : ''}`}>
+                <div className="num">{day.getDate()}</div>
+                {dayItems.map((it) => {
+                  const story = byId[it.storyId];
+                  const accent = story ? pillarById[story.pillar]?.accent : 'var(--accent)';
+                  return (
+                    <button key={it.id} className={`cal-chip ${it.published ? 'pub' : ''}`} style={{ '--c': accent }} onClick={() => openPreview(it)} title={it.title}>
+                      <span className="chip-dot" />
+                      <span className="chip-txt">{it.published ? '✓ ' : ''}{it.channel} · {it.title}</span>
+                    </button>
+                  );
+                })}
               </div>
             );
           })}
         </div>
+      </div>
+
+      {/* List with quick publish toggle */}
+      <div className="cal-list">
+        {items.map((it) => {
+          const story = byId[it.storyId];
+          const pillar = story ? pillarById[story.pillar] : null;
+          return (
+            <div className="panel cal-item" key={it.id}>
+              <div className="cal-date">{new Date(it.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title}</div>
+                <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>{it.channel}{pillar ? ` · ${pillar.name}` : ''}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <button className="btn sm" onClick={() => openPreview(it)}>Preview</button>
+                <label className="pub-toggle" title="Mark as published">
+                  <span className={`switch ${it.published ? 'on' : ''}`} onClick={() => onSetPublished(it, !it.published)} />
+                  <span className="muted" style={{ fontSize: 12 }}>{it.published ? 'Published' : 'Mark published'}</span>
+                </label>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {preview && (
+        <Modal title="Post preview" onClose={() => setPreview(null)}>
+          <PostPreview item={preview.it} story={preview.story} pillar={preview.pillar} onSetPublished={onSetPublished} />
+        </Modal>
       )}
     </>
+  );
+}
+
+function Modal({ title, children, onClose }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <b>{title}</b>
+          <button className="btn sm ghost" onClick={onClose}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PostPreview({ item, story, pillar, onSetPublished }) {
+  const handle = '@MarketOne';
+  const graphicFmt = item.channel === 'X / Twitter' || item.channel === 'Blog' ? 'link' : 'square';
+  const body = item.copy || story?.summary || story?.title || '';
+  return (
+    <div className="preview-grid">
+      <div className="preview-left">
+        <div className="post-card">
+          <div className="post-card-head">
+            <div className="av">M1</div>
+            <div>
+              <b>Market One</b>
+              <div className="muted" style={{ fontSize: 12 }}>{handle} · {item.channel} · {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+            </div>
+            <span className={`status ${item.published ? 'published' : 'draft'}`} style={{ marginLeft: 'auto' }}>{item.published ? 'published' : 'scheduled'}</span>
+          </div>
+          <div className="post-card-body">{body}</div>
+          {story?.url && (
+            <a className="post-link" href={story.url} target="_blank" rel="noreferrer">
+              <span className="muted">Source</span> {story.source} ↗
+            </a>
+          )}
+        </div>
+        <label className="pub-toggle" style={{ marginTop: 4 }}>
+          <span className={`switch ${item.published ? 'on' : ''}`} onClick={() => onSetPublished(item, !item.published)} />
+          <span style={{ fontSize: 13 }}>{item.published ? 'Published' : 'Mark as published'}</span>
+        </label>
+      </div>
+      <div className="preview-right">
+        {story
+          ? <PostGraphic story={story} pillar={pillar} fmt={graphicFmt} />
+          : <div className="muted" style={{ fontSize: 13 }}>Graphic preview unavailable (story not loaded).</div>}
+      </div>
+    </div>
   );
 }
 
