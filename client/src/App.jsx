@@ -156,10 +156,12 @@ export default function App() {
   }
 
   function scheduleStory(story, dateStr, channel) {
-    setCalendar((c) =>
-      [...c, { id: `${story.id}-${Date.now()}`, storyId: story.id, title: story.title, date: dateStr, channel }]
-        .sort((a, b) => new Date(a.date) - new Date(b.date)),
-    );
+    setCalendar((c) => {
+      // De-dupe identical story+channel+date entries so repeat clicks don't pile up.
+      if (c.some((x) => x.storyId === story.id && x.channel === channel && x.date === dateStr)) return c;
+      return [...c, { id: `${story.id}-${channel}-${dateStr}`, storyId: story.id, title: story.title, date: dateStr, channel }]
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+    });
   }
 
   const visible = activePillar === 'all' ? articles : articles.filter((a) => a.pillar === activePillar);
@@ -230,7 +232,11 @@ export default function App() {
               if (!selected) return;
               setStatus(selected.id, st);
               if (st === 'approved') { pushSlack(`✅ *Approved for publishing:* "${selected.title}" — ${pillarById[selected.pillar]?.name || ''}`); flash('Approved — Slack alert sent'); }
-              if (st === 'published') { pushSlack(`🚀 *Published:* "${selected.title}" (${selected.source}) ${selected.url}`); flash('Pushed to publish'); }
+              if (st === 'published') {
+                pushSlack(`🚀 *Published:* "${selected.title}" (${selected.source}) ${selected.url}`);
+                scheduleStory(selected, new Date().toISOString().slice(0, 10), 'Published');
+                flash('Published → added to calendar');
+              }
             }}
             onSchedule={(dateStr, channel) => { scheduleStory(selected, dateStr, channel); pushSlack(`🗓️ *Scheduled* "${selected.title}" → ${channel} on ${dateStr}`); flash('Added to calendar'); }}
             onToast={flash}
