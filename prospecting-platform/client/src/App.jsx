@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
 import { demo, initialDemoFromUrl } from './demoFlag';
 import {
-  DEMO_COMPANIES, DEMO_SEQUENCES, STATUSES, PIPELINE_STAGES, TAGS, EXCHANGES,
-  SIGNAL_TYPES, SEQUENCE_VARS, scoreCompany, scoreBand, importCompaniesFromCsv, SAMPLE_CSV,
+  DEMO_COMPANIES, DEMO_SEQUENCES, DEMO_CONFERENCES, STATUSES, PIPELINE_STAGES, TAGS, EXCHANGES,
+  SIGNAL_TYPES, SEQUENCE_VARS, scoreCompany, scoreBand, importCompaniesFromCsv, SAMPLE_CSV, SAMPLE_CONFERENCE_CSV,
 } from './data';
 
 // Seed demo mode from the URL (?demo=1) before any API call runs.
 demo.set(initialDemoFromUrl());
 
-const TABS = ['Dashboard', 'Companies', 'Pipeline', 'Signals', 'Sequences'];
+const TABS = ['Dashboard', 'Companies', 'Pipeline', 'Signals', 'Sequences', 'Conferences'];
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const money = (n) => (n ? `$${Number(n).toLocaleString()}` : '—');
@@ -28,9 +28,11 @@ export default function App() {
   const [tab, setTab] = useState('Dashboard');
   const [companies, setCompanies] = useState(() => clone(DEMO_COMPANIES));
   const [sequences, setSequences] = useState(() => clone(DEMO_SEQUENCES));
+  const [conferences, setConferences] = useState(() => clone(DEMO_CONFERENCES));
   const [openId, setOpenId] = useState(null);
   const [toast, setToast] = useState('');
   const [demoOn, setDemoOn] = useState(demo.enabled);
+  const [watchOnly, setWatchOnly] = useState(false);
 
   useEffect(() => {
     // Auto-fall back to demo when the server has no Anthropic key.
@@ -67,6 +69,41 @@ export default function App() {
   function addActivity(id, type, text) {
     updateCompany(id, (c) => ({ activities: [{ id: newId('ac'), type, text, date: new Date().toISOString() }, ...(c.activities || [])] }));
   }
+  function toggleWatch(id) { updateCompany(id, (x) => ({ watchlist: !x.watchlist })); }
+
+  // Enroll a specific contact at a company into a sequence (the recipient).
+  function enrollOne(company, seq, contact, ctx = {}) {
+    updateCompany(company.id, { status: 'In Sequence' });
+    const who = contact ? `${contact.name} (${contact.title})` : (company.irContact || 'primary contact');
+    addActivity(company.id, 'email', `Enrolled ${who} in "${seq.name}"${ctx.conference ? ` for ${ctx.conference}` : ''} (Step 1 queued)`);
+    setSequences((ss) => ss.map((x) => (x.id === seq.id
+      ? {
+        ...x,
+        stats: { ...x.stats, enrolled: x.stats.enrolled + 1 },
+        recipients: [{ companyId: company.id, companyName: company.name, name: contact?.name || 'IR contact', title: contact?.title || '', email: contact?.email || company.irContact || '' }, ...(x.recipients || [])],
+      }
+      : x)));
+  }
+  function enroll(company, seq, contact, ctx) { enrollOne(company, seq, contact, ctx); flash(`Enrolled ${contact?.name || company.name} in ${seq.name}`); }
+  function bulkEnroll(seq, list, ctx) {
+    list.forEach((c) => enrollOne(c, seq, c.contacts?.[0], ctx));
+    flash(`Enrolled ${list.length} ${list.length === 1 ? 'company' : 'companies'} in ${seq.name}`);
+  }
+
+  function createConference({ name, date, location }) {
+    const conf = { id: newId('conf'), name: name || 'New conference', date: date || '', location: location || '', companyIds: [] };
+    setConferences((cs) => [conf, ...cs]);
+    return conf;
+  }
+  // Import a conference attendee CSV: dedupe into the company DB, tag as a
+  // Conference Prospect, and attach the affected companies to the conference.
+  function importConferenceCsv(confId, text, confName) {
+    const res = importCompaniesFromCsv(text, companies.map(({ _score, ...c }) => c), ['Conference Prospect']);
+    setCompanies(res.companies);
+    setConferences((cs) => cs.map((cf) => (cf.id === confId ? { ...cf, companyIds: Array.from(new Set([...(cf.companyIds || []), ...res.affectedIds])) } : cf)));
+    flash(`${confName}: +${res.created} new, ${res.updated} updated attendees`);
+    return res;
+  }
 
   return (
     <div className="app">
@@ -99,8 +136,12 @@ export default function App() {
           </div>
         )}
 
-        {tab === 'Dashboard' && <Dashboard companies={scored} sequences={sequences} onOpen={setOpenId} onGo={setTab} />}
-        {tab === 'Companies' && <Companies companies={scored} onOpen={setOpenId} onImport={setCompanies} flash={flash} />}
+        {tab === 'Dashboard' && <Dashboard companies={scored} sequences={sequences} onOpen={setOpenId} onGo={setTab} onWatchlist={() => { setWatchOnly(true); setTab('Companies'); }} />}
+        {tab === 'Companies' && (
+          <Companies companies={scored} onOpen={setOpenId} onImport={setCompanies} flash={flash}
+            onlyWatch={watchOnly} setOnlyWatch={setWatchOnly} sequences={sequences}
+            onToggleWatch={toggleWatch} onBulkEnroll={bulkEnroll} />
+        )}
         {tab === 'Pipeline' && <Pipeline companies={scored} onOpen={setOpenId} onMove={(id, status) => { updateCompany(id, { status }); addActivity(id, 'note', `Moved to ${status}`); flash(`→ ${status}`); }} />}
         {tab === 'Signals' && (
           <Signals companies={scored} onOpen={setOpenId}
@@ -108,8 +149,12 @@ export default function App() {
         )}
         {tab === 'Sequences' && (
           <Sequences sequences={sequences} setSequences={setSequences} companies={scored}
-            onEnroll={(seq, c) => { updateCompany(c.id, { status: 'In Sequence' }); addActivity(c.id, 'email', `Enrolled in "${seq.name}" (Step 1 queued)`); flash(`${c.name} enrolled in ${seq.name}`); }}
-            flash={flash} />
+            onEnroll={(seq, c, contact) => enroll(c, seq, contact)} flash={flash} />
+        )}
+        {tab === 'Conferences' && (
+          <Conferences conferences={conferences} companies={scored} sequences={sequences}
+            onOpen={setOpenId} onCreate={createConference} onImportCsv={importConferenceCsv}
+            onBulkEnroll={bulkEnroll} flash={flash} />
         )}
       </main>
 
@@ -120,7 +165,7 @@ export default function App() {
           onClose={() => setOpenId(null)}
           onUpdate={(patch) => updateCompany(open.id, patch)}
           onActivity={(type, text) => addActivity(open.id, type, text)}
-          onEnroll={(seq) => { updateCompany(open.id, { status: 'In Sequence' }); addActivity(open.id, 'email', `Enrolled in "${seq.name}"`); flash(`Enrolled in ${seq.name}`); }}
+          onEnroll={(seq, contact) => enroll(open, seq, contact)}
           flash={flash}
         />
       )}
@@ -144,7 +189,7 @@ function Logo() {
 }
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
-function Dashboard({ companies, sequences, onOpen, onGo }) {
+function Dashboard({ companies, sequences, onOpen, onGo, onWatchlist }) {
   const now = Date.now();
   const week = 7 * 86400000;
   const newFinancings = companies.filter((c) => (c.signals || []).some((s) => s.type === 'financing' && now - new Date(s.date).getTime() <= week));
@@ -170,7 +215,7 @@ function Dashboard({ companies, sequences, onOpen, onGo }) {
 
       <div className="stat-row">
         <Kpi n={newFinancings.length} l="New financings this week" accent="var(--accent)" />
-        <Kpi n={watchlist.length} l="On watchlists" />
+        <Kpi n={watchlist.length} l="On watchlists" onClick={onWatchlist} />
         <Kpi n={inSequence.length} l="In sequence" accent="var(--accent-2)" />
         <Kpi n={`${openRate}%`} l="Email open rate" />
         <Kpi n={meetings.length} l="Meetings booked" accent="var(--good)" />
@@ -221,8 +266,8 @@ function Dashboard({ companies, sequences, onOpen, onGo }) {
   );
 }
 
-function Kpi({ n, l, accent }) {
-  return <div className="panel kpi"><div className="n" style={accent ? { color: accent } : undefined}>{n}</div><div className="l">{l}</div></div>;
+function Kpi({ n, l, accent, onClick }) {
+  return <div className={`panel kpi${onClick ? ' clickable' : ''}`} onClick={onClick}><div className="n" style={accent ? { color: accent } : undefined}>{n}</div><div className="l">{l}</div></div>;
 }
 
 function ScoreRing({ score, size = 38 }) {
@@ -240,13 +285,13 @@ function ScoreRing({ score, size = 38 }) {
 }
 
 // ── Companies ────────────────────────────────────────────────────────────────
-function Companies({ companies, onOpen, onImport, flash }) {
+function Companies({ companies, onOpen, onImport, flash, onlyWatch, setOnlyWatch, sequences, onToggleWatch, onBulkEnroll }) {
   const [q, setQ] = useState('');
   const [exch, setExch] = useState('all');
   const [industry, setIndustry] = useState('all');
   const [status, setStatus] = useState('all');
-  const [onlyWatch, setOnlyWatch] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [bulkSeq, setBulkSeq] = useState(sequences[0]?.id || '');
 
   const industries = useMemo(() => Array.from(new Set(companies.map((c) => c.industry).filter(Boolean))), [companies]);
   const rows = companies.filter((c) => {
@@ -276,7 +321,18 @@ function Companies({ companies, onOpen, onImport, flash }) {
         <button className={`pill ${onlyWatch ? 'active' : ''}`} onClick={() => setOnlyWatch((v) => !v)}>★ Watchlist</button>
       </div>
 
-      <div className="muted" style={{ fontSize: 12.5, margin: '0 0 10px' }}>{rows.length} {rows.length === 1 ? 'company' : 'companies'}</div>
+      <div className="bulk-bar">
+        <span className="muted" style={{ fontSize: 12.5 }}>{rows.length} {rows.length === 1 ? 'company' : 'companies'}{onlyWatch ? ' on your watchlist' : ''}</span>
+        {rows.length > 0 && sequences.length > 0 && (
+          <div className="bulk-actions">
+            <span className="muted" style={{ fontSize: 12.5 }}>Enroll all in</span>
+            <select value={bulkSeq} onChange={(e) => setBulkSeq(e.target.value)}>
+              {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button className="btn sm primary" disabled={!bulkSeq} onClick={() => onBulkEnroll(sequences.find((s) => s.id === bulkSeq), rows)}>Enroll {rows.length} →</button>
+          </div>
+        )}
+      </div>
 
       <div className="panel co-table">
         <div className="co-row co-head">
@@ -286,7 +342,10 @@ function Companies({ companies, onOpen, onImport, flash }) {
           <div className="co-row" key={c.id} onClick={() => onOpen(c.id)}>
             <span><ScoreRing score={c._score.score} size={34} /></span>
             <span style={{ minWidth: 0 }}>
-              <span className="co-name">{c.watchlist && <span className="star">★</span>}{c.name}</span>
+              <span className="co-name">
+                <span className={`star ${c.watchlist ? '' : 'off'}`} onClick={(e) => { e.stopPropagation(); onToggleWatch(c.id); }} title={c.watchlist ? 'Remove from watchlist' : 'Add to watchlist'}>★</span>
+                {c.name}
+              </span>
               <span className="muted co-sub">{c.ticker}:{c.exchange} · {c.hq}</span>
             </span>
             <span className="muted">{c.industry}{c.sector ? <><br /><span style={{ fontSize: 11 }}>{c.sector}</span></> : null}</span>
@@ -493,6 +552,14 @@ function Sequences({ sequences, setSequences, companies, onEnroll, flash }) {
                 <span><b>{seq.stats.meetings}</b> meetings</span>
               </div>
 
+              {seq.recipients?.length > 0 && (
+                <div className="seq-recips">
+                  <span className="muted" style={{ fontSize: 11.5 }}>Recipients</span>
+                  {seq.recipients.slice(0, 4).map((r, i) => <span key={i} className="recip-chip" title={r.email}>{r.name}{r.companyName ? ` · ${r.companyName}` : ''}</span>)}
+                  {seq.recipients.length > 4 && <span className="muted" style={{ fontSize: 11.5 }}>+{seq.recipients.length - 4} more</span>}
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button className="btn sm primary" onClick={() => setEnrollFor(seq)}>Enroll company</button>
                 <button className="btn sm" onClick={() => setEditing(clone(seq))}>Edit steps</button>
@@ -503,23 +570,64 @@ function Sequences({ sequences, setSequences, companies, onEnroll, flash }) {
       </div>
 
       {enrollFor && (
-        <Modal title={`Enroll a company in "${enrollFor.name}"`} onClose={() => setEnrollFor(null)}>
-          <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>Pick a prospect. Personalization variables fill from their profile; the sequence pauses automatically if they reply.</p>
-          <div className="enroll-list">
-            {companies.slice(0, 12).map((c) => (
-              <button key={c.id} className="enroll-row" onClick={() => { onEnroll(enrollFor, c); setSequences((s) => s.map((x) => (x.id === enrollFor.id ? { ...x, stats: { ...x.stats, enrolled: x.stats.enrolled + 1 } } : x))); setEnrollFor(null); }}>
-                <ScoreRing score={c._score.score} size={30} />
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span className="co-name" style={{ fontSize: 13 }}>{c.name}</span>
-                  <span className="muted co-sub">{c.ticker}:{c.exchange} · {c.status}</span>
-                </span>
-                <span className="btn sm">Enroll →</span>
-              </button>
-            ))}
-          </div>
-        </Modal>
+        <EnrollModal seq={enrollFor} companies={companies} onClose={() => setEnrollFor(null)}
+          onEnroll={(co, contact) => { onEnroll(enrollFor, co, contact); setEnrollFor(null); }} />
       )}
     </>
+  );
+}
+
+// Two-step enroll: pick a company, then pick which contact is the recipient.
+function EnrollModal({ seq, companies, onClose, onEnroll }) {
+  const [coId, setCoId] = useState(null);
+  const [ctIdx, setCtIdx] = useState(0);
+  const co = companies.find((c) => c.id === coId);
+
+  if (!co) {
+    return (
+      <Modal title={`Enroll in "${seq.name}" — pick a company`} onClose={onClose}>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>Choose a prospect, then pick which contact to enroll. The sequence pauses automatically if they reply.</p>
+        <div className="enroll-list">
+          {companies.slice(0, 14).map((c) => (
+            <button key={c.id} className="enroll-row" onClick={() => { setCoId(c.id); setCtIdx(0); }}>
+              <ScoreRing score={c._score.score} size={30} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span className="co-name" style={{ fontSize: 13 }}>{c.name}</span>
+                <span className="muted co-sub">{c.ticker}:{c.exchange} · {(c.contacts || []).length} contact{(c.contacts || []).length === 1 ? '' : 's'}</span>
+              </span>
+              <span className="btn sm">Choose →</span>
+            </button>
+          ))}
+        </div>
+      </Modal>
+    );
+  }
+
+  const contacts = co.contacts || [];
+  return (
+    <Modal title={`Enroll ${co.name} — pick a contact`} onClose={onClose}>
+      <button className="btn sm ghost" onClick={() => setCoId(null)} style={{ marginBottom: 12 }}>← Back to companies</button>
+      {contacts.length === 0 ? (
+        <div className="banner" style={{ marginBottom: 12 }}>No contacts on file — enrich this company first, or enroll the IR contact ({co.irContact || 'none'}).</div>
+      ) : (
+        <div className="pick-list">
+          {contacts.map((p, i) => (
+            <button key={p.id || i} className={`pick-row ${ctIdx === i ? 'on' : ''}`} onClick={() => setCtIdx(i)}>
+              <span className={`radio ${ctIdx === i ? 'on' : ''}`} />
+              <div className="av sm">{(p.name || '?').split(' ').map((w) => w[0]).join('').slice(0, 2)}</div>
+              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                <div className="co-name" style={{ fontSize: 13 }}>{p.name} <span className="muted" style={{ fontWeight: 400 }}>· {p.title}</span></div>
+                <div className="muted" style={{ fontSize: 12 }}>{p.email} · <span className={`email-badge ${p.emailStatus}`}>{p.emailStatus}</span></div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+        <button className="btn ghost" onClick={onClose}>Cancel</button>
+        <button className="btn primary" onClick={() => onEnroll(co, contacts[ctIdx])}>Enroll {contacts[ctIdx] ? contacts[ctIdx].name.split(' ')[0] : co.name} →</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -813,12 +921,140 @@ function AiTab({ c, sequences, onEnroll, flash }) {
           </>
         ) : <div className="muted" style={{ fontSize: 13 }}>Draft a personalized {channel.toLowerCase()} with an AI first line tied to {c.name}'s latest signal.</div>}
 
-        <div className="section-label" style={{ marginTop: 16 }}>Add to sequence</div>
+        <div className="section-label" style={{ marginTop: 16 }}>Add to sequence{(c.contacts || [])[contactIdx] ? ` · ${(c.contacts || [])[contactIdx].name}` : ''}</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {sequences.map((s) => <button key={s.id} className="btn sm" onClick={() => onEnroll(s)}>{s.name} →</button>)}
+          {sequences.map((s) => <button key={s.id} className="btn sm" onClick={() => onEnroll(s, (c.contacts || [])[contactIdx])}>{s.name} →</button>)}
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Conferences ──────────────────────────────────────────────────────────────
+function Conferences({ conferences, companies, sequences, onOpen, onCreate, onImportCsv, onBulkEnroll, flash }) {
+  const [selId, setSelId] = useState(conferences[0]?.id || null);
+  const [showNew, setShowNew] = useState(false);
+  const [form, setForm] = useState({ name: '', date: '', location: '' });
+  const [showImport, setShowImport] = useState(false);
+  const confSeqId = sequences.find((s) => s.id === 'seq-conference')?.id || sequences[0]?.id || '';
+  const [bulkSeq, setBulkSeq] = useState(confSeqId);
+
+  const conf = conferences.find((c) => c.id === selId) || conferences[0];
+  const cols = '52px 1.8fr 1fr 1.1fr 0.7fr 76px';
+  const attendees = conf ? companies.filter((c) => (conf.companyIds || []).includes(c.id)) : [];
+
+  function create() {
+    if (!form.name.trim()) { flash('Name the conference first'); return; }
+    const c = onCreate(form);
+    setSelId(c.id); setShowNew(false); setForm({ name: '', date: '', location: '' });
+  }
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1>Conference outreach</h1>
+          <p>Upload an attendee list for an event, auto-add the companies to your database (deduped + tagged), then enroll them in a pre-event outreach sequence.</p>
+        </div>
+        <button className="btn primary" onClick={() => setShowNew(true)}>+ New conference</button>
+      </div>
+
+      <div className="conf-layout">
+        <div className="conf-list">
+          {conferences.map((cf) => (
+            <button key={cf.id} className={`conf-item ${cf.id === conf?.id ? 'on' : ''}`} onClick={() => setSelId(cf.id)}>
+              <div style={{ fontWeight: 700, fontSize: 13.5 }}>{cf.name}</div>
+              <div className="muted" style={{ fontSize: 12 }}>{cf.date || 'no date'}{cf.location ? ` · ${cf.location}` : ''} · {(cf.companyIds || []).length} attendees</div>
+            </button>
+          ))}
+          {conferences.length === 0 && <div className="muted" style={{ fontSize: 13, padding: 12 }}>No conferences yet — create one to start.</div>}
+        </div>
+
+        <div className="conf-main">
+          {conf ? (
+            <>
+              <div className="panel pad" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 700 }}>{conf.name}</div>
+                  <div className="muted" style={{ fontSize: 12.5 }}>{conf.date || 'Date TBD'}{conf.location ? ` · ${conf.location}` : ''} · {attendees.length} attendee{attendees.length === 1 ? '' : 's'}</div>
+                </div>
+                <button className="btn" onClick={() => setShowImport(true)}>⤓ Upload attendee CSV</button>
+              </div>
+
+              {attendees.length > 0 && sequences.length > 0 && (
+                <div className="bulk-bar" style={{ marginTop: 14 }}>
+                  <span className="muted" style={{ fontSize: 12.5 }}>{attendees.length} attendees in your database</span>
+                  <div className="bulk-actions">
+                    <span className="muted" style={{ fontSize: 12.5 }}>Outreach sequence</span>
+                    <select value={bulkSeq} onChange={(e) => setBulkSeq(e.target.value)}>{sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+                    <button className="btn sm primary" onClick={() => onBulkEnroll(sequences.find((s) => s.id === bulkSeq), attendees, { conference: conf.name })}>Enroll {attendees.length} →</button>
+                  </div>
+                </div>
+              )}
+
+              <div className="panel co-table" style={{ marginTop: 14 }}>
+                <div className="co-row co-head" style={{ gridTemplateColumns: cols }}>
+                  <span>Score</span><span>Company</span><span>Industry</span><span>Status</span><span>Contacts</span><span></span>
+                </div>
+                {attendees.map((c) => (
+                  <div className="co-row" key={c.id} style={{ gridTemplateColumns: cols }} onClick={() => onOpen(c.id)}>
+                    <span><ScoreRing score={c._score.score} size={34} /></span>
+                    <span style={{ minWidth: 0 }}><span className="co-name">{c.name}</span><span className="muted co-sub">{c.ticker}:{c.exchange}</span></span>
+                    <span className="muted">{c.industry}</span>
+                    <span><StatusPill status={c.status} /></span>
+                    <span className="muted">{(c.contacts || []).length}</span>
+                    <span><button className="btn sm" onClick={(e) => { e.stopPropagation(); onOpen(c.id); }}>Open</button></span>
+                  </div>
+                ))}
+                {attendees.length === 0 && <div className="empty" style={{ padding: 36 }}>No attendees yet — upload a CSV to populate this conference.</div>}
+              </div>
+            </>
+          ) : <div className="empty">Create a conference to get started.</div>}
+        </div>
+      </div>
+
+      {showNew && (
+        <Modal title="New conference" onClose={() => setShowNew(false)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <label className="fld">Conference name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Precious Metals Summit 2026" /></label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <label className="fld" style={{ flex: 1 }}>Date<input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></label>
+              <label className="fld" style={{ flex: 1 }}>Location<input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Toronto, ON" /></label>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+              <button className="btn ghost" onClick={() => setShowNew(false)}>Cancel</button>
+              <button className="btn primary" onClick={create}>Create conference</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showImport && conf && (
+        <ConferenceImport conf={conf} onClose={() => setShowImport(false)} onImport={(text) => { onImportCsv(conf.id, text, conf.name); setShowImport(false); }} />
+      )}
+    </>
+  );
+}
+
+function ConferenceImport({ conf, onClose, onImport }) {
+  const [text, setText] = useState('');
+  function onFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onImport(String(reader.result));
+    reader.readAsText(file);
+  }
+  return (
+    <Modal title={`Upload attendees — ${conf.name}`} onClose={onClose}>
+      <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>CSV columns: Company, Ticker, Exchange, Industry, Headquarters, Website. Companies are deduped into your database and tagged <b>Conference Prospect</b>.</p>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        <label className="btn sm">Choose file…<input type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} /></label>
+        <button className="btn sm ghost" onClick={() => setText(SAMPLE_CONFERENCE_CSV)}>Paste sample</button>
+        <button className="btn sm primary" onClick={() => onImport(text)} disabled={!text.trim()}>Import attendees</button>
+      </div>
+      <textarea className="copy-out" rows={7} value={text} onChange={(e) => setText(e.target.value)} placeholder="…or paste CSV here" style={{ width: '100%' }} />
+    </Modal>
   );
 }
 

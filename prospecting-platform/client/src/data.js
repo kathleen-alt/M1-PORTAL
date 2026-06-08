@@ -313,6 +313,10 @@ export const DEMO_SEQUENCES = [
       { day: 14, channel: 'Email', subject: 'Closing the loop', body: 'Hi {{firstName}}, I\'ll stop here for now — if investor awareness becomes a priority for {{companyName}}, I\'m a reply away.' },
     ],
     stats: { enrolled: 12, sent: 34, opens: 22, replies: 5, meetings: 2 },
+    recipients: [
+      { companyName: 'NorthPeak Lithium Ltd.', name: 'Elena Vasquez', title: 'President & CEO', email: 'elena.vasquez@northpeaklithium.com' },
+      { companyName: 'Aurelia Gold Corp.', name: 'Marcus Delaney', title: 'Chief Executive Officer', email: 'marcus.delaney@aureliagold.ca' },
+    ],
   },
   {
     id: 'seq-tech-awareness',
@@ -325,7 +329,28 @@ export const DEMO_SEQUENCES = [
       { day: 10, channel: 'Email', subject: 'Three ideas for {{companyName}}', body: 'A short list of three awareness levers we\'d pull for {{companyName}} this quarter.' },
     ],
     stats: { enrolled: 8, sent: 17, opens: 11, replies: 3, meetings: 1 },
+    recipients: [
+      { companyName: 'NovaCore Semiconductors', name: 'Rebecca Stone', title: 'VP Investor Relations', email: 'rebecca.stone@novacoresemi.com' },
+    ],
   },
+  {
+    id: 'seq-conference',
+    name: 'Conference — Pre-event Meeting Requests',
+    status: 'Active',
+    audience: 'Companies attending a conference we are at',
+    steps: [
+      { day: 1, channel: 'Email', subject: 'See you at {{conferenceName}}, {{firstName}}?', body: 'Hi {{firstName}},\n\nI noticed {{companyName}} is attending {{conferenceName}}. Market One works with {{exchange}}-listed {{industry}} companies on investor awareness, and we\'ll be on site.\n\nWould you have 20 minutes to connect during the event?' },
+      { day: 3, channel: 'Email', subject: 'A time at {{conferenceName}}', body: 'Hi {{firstName}}, following up — happy to work around your schedule at {{conferenceName}}. Mornings or between sessions both work for us.' },
+      { day: 6, channel: 'LinkedIn', subject: '', body: 'Hi {{firstName}} — hoping to say hello at {{conferenceName}}. I sent a note about a quick on-site chat re: investor awareness for {{companyName}}.' },
+    ],
+    stats: { enrolled: 0, sent: 0, opens: 0, replies: 0, meetings: 0 },
+    recipients: [],
+  },
+];
+
+// Sample conferences (attendee lists feed the Conference Outreach workflow).
+export const DEMO_CONFERENCES = [
+  { id: 'conf-precious-metals', name: 'Precious Metals & Mining Summit 2026', date: '2026-09-14', location: 'Toronto, ON', companyIds: ['co-cascade', 'co-aurelia', 'co-novacore'] },
 ];
 
 // Personalization variables exposed in the sequence builder.
@@ -336,6 +361,7 @@ export const SEQUENCE_VARS = [
   { token: 'latestHeadline', label: 'Latest News Headline' },
   { token: 'exchange', label: 'Exchange' },
   { token: 'industry', label: 'Industry' },
+  { token: 'conferenceName', label: 'Conference Name' },
 ];
 
 export function fillTemplate(text, vars) {
@@ -391,9 +417,9 @@ const COLUMN_ALIASES = {
 
 // Map a CSV into company objects, then dedupe against existing records (by
 // ticker, else by normalized name). Returns { created, updated, companies }.
-export function importCompaniesFromCsv(text, existing) {
+export function importCompaniesFromCsv(text, existing, extraTags = []) {
   const rows = parseCsv(text);
-  if (rows.length < 2) return { created: 0, updated: 0, duplicates: 0, companies: existing };
+  if (rows.length < 2) return { created: 0, updated: 0, duplicates: 0, companies: existing, affectedIds: [] };
   const header = rows[0].map((h) => h.trim().toLowerCase());
   const colIndex = {};
   for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
@@ -405,6 +431,8 @@ export function importCompaniesFromCsv(text, existing) {
   const byName = new Map(existing.map((c) => [norm(c.name), c]));
 
   let created = 0, updated = 0, duplicates = 0;
+  const affectedIds = [];
+  const withTags = (tags) => Array.from(new Set([...(tags || []), ...extraTags]));
   let companies = [...existing];
   for (let r = 1; r < rows.length; r++) {
     const cells = rows[r];
@@ -424,23 +452,25 @@ export function importCompaniesFromCsv(text, existing) {
       irContact: get('irContact') || match?.irContact || '',
     };
     if (match) {
-      const merged = { ...match, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v)) };
+      const merged = { ...match, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v)), tags: withTags(match.tags) };
       companies = companies.map((c) => (c.id === match.id ? merged : c));
       byTicker.set((merged.ticker || '').toUpperCase(), merged);
       byName.set(norm(merged.name), merged);
+      affectedIds.push(match.id);
       updated++; duplicates++;
     } else {
       const co = company({
         id: uid('co'), ...fields, sharePrice: null, marketCap: null,
-        status: 'New Prospect', tags: [fields.exchange].filter(Boolean), _added: 0,
+        status: 'New Prospect', tags: withTags([fields.exchange].filter(Boolean)), _added: 0,
       });
       companies.push(co);
       if (co.ticker) byTicker.set(co.ticker.toUpperCase(), co);
       byName.set(norm(co.name), co);
+      affectedIds.push(co.id);
       created++;
     }
   }
-  return { created, updated, duplicates, companies };
+  return { created, updated, duplicates, companies, affectedIds };
 }
 
 export const SAMPLE_CSV = `Company,Ticker,Exchange,Industry,Market Cap,Headquarters,Website
@@ -448,6 +478,14 @@ Pinnacle Zinc Corp,PZC,TSXV,Mining,C$64M,Vancouver BC,pinnaclezinc.ca
 Lumen AI Holdings,LMN,CSE,Technology,C$120M,Toronto ON,lumenai.io
 Cascade Copper Inc,CCU,TSXV,Mining,C$211M,Vancouver BC,cascadecopper.com
 Apex Therapeutics,APX,TSX,Life Sciences,C$430M,Montreal QC,apextx.com`;
+
+// A sample conference attendee list — mixes a known issuer (Aurelia) with new
+// ones so the dedupe + tag-on-import behaviour is visible.
+export const SAMPLE_CONFERENCE_CSV = `Company,Ticker,Exchange,Industry,Headquarters,Website
+Aurelia Gold Corp,AUG,TSXV,Mining,Vancouver BC,aureliagold.ca
+Granite Ridge Resources,GRR,TSXV,Mining,Vancouver BC,graniteridge.ca
+Silverline Exploration,SLX,CSE,Mining,Toronto ON,silverlineexp.com
+Cobalt Creek Mining,CCM,TSXV,Mining,Sudbury ON,cobaltcreek.ca`;
 
 // ── Demo generators (no API key — mirror the live AI endpoints) ───────────────
 const wait = (ms = 500) => new Promise((r) => setTimeout(r, ms));

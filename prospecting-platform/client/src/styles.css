@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark; /* native selects, date pickers, scrollbars render dark (light text) */
   --ink: #0b0f1a;
   --ink-2: #111726;
   --panel: #151c2e;
@@ -103,6 +104,7 @@ input, select, textarea {
   border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13.5px;
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+option { background: var(--ink-2); color: var(--text); }
 textarea { resize: vertical; line-height: 1.5; }
 label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); font-weight: 600; }
 
@@ -131,6 +133,8 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 /* ── Dashboard ── */
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 22px; }
 .kpi { padding: 15px 17px; }
+.kpi.clickable { cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
+.kpi.clickable:hover { border-color: var(--accent); transform: translateY(-2px); }
 .kpi .n { font-family: var(--serif); font-size: 27px; line-height: 1; }
 .kpi .l { color: var(--muted); font-size: 12px; margin-top: 6px; }
 .cols { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; }
@@ -157,7 +161,11 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 .co-row:not(.co-head):hover { background: var(--ink-2); }
 .co-head { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; cursor: default; background: var(--ink-2); }
 .co-name { font-weight: 700; font-size: 13.5px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.co-name .star { color: var(--warn); margin-right: 5px; }
+.co-name .star { color: var(--warn); margin-right: 5px; cursor: pointer; }
+.co-name .star.off { color: var(--line); }
+.co-name .star:hover { color: var(--warn); }
+.bulk-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 10px; }
+.bulk-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .co-sub { display: block; font-size: 11.5px; margin-top: 2px; }
 .sig-dots { display: flex; align-items: center; gap: 5px; }
 .sig-dots .sig-dot { margin-top: 0; }
@@ -209,6 +217,28 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 .enroll-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow: auto; }
 .enroll-row { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--ink-2); text-align: left; transition: all 0.15s; }
 .enroll-row:hover { border-color: var(--accent); }
+
+/* contact picker (which recipient to enroll) */
+.pick-list { display: flex; flex-direction: column; gap: 6px; max-height: 52vh; overflow: auto; }
+.pick-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--ink-2); transition: all 0.15s; cursor: pointer; }
+.pick-row:hover { border-color: var(--muted); }
+.pick-row.on { border-color: var(--accent); background: var(--accent-soft); }
+.radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); flex-shrink: 0; position: relative; }
+.radio.on { border-color: var(--accent); }
+.radio.on::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent); }
+
+/* sequence recipients */
+.seq-recips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding-top: 4px; }
+.recip-chip { font-size: 11px; background: var(--ink-2); border: 1px solid var(--line-soft); border-radius: 999px; padding: 3px 9px; color: var(--text-dim); }
+
+/* conferences */
+.conf-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+.conf-list { display: flex; flex-direction: column; gap: 8px; }
+.conf-item { text-align: left; border: 1px solid var(--line-soft); background: var(--panel); border-radius: 12px; padding: 12px 14px; transition: all 0.15s; }
+.conf-item:hover { border-color: var(--muted); }
+.conf-item.on { border-color: var(--accent); background: var(--accent-soft); }
+.conf-main { min-width: 0; }
+@media (max-width: 900px) { .conf-layout { grid-template-columns: 1fr; } }
 
 /* ── Score ring + breakdown ── */
 .score-parts { display: flex; flex-direction: column; gap: 9px; }
