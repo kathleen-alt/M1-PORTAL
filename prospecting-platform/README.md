@@ -63,6 +63,16 @@ npm run build               # builds the client to client/dist
 npm start                   # server serves the API + built client on :4100
 ```
 
+### Shareable offline demo
+
+```bash
+npm run build:standalone    # → m1-prospecting-demo.html
+```
+
+Produces a single self-contained HTML file that runs the whole platform **offline in Demo
+mode** (no server, no API key) — just open it in any browser. Handy for sharing an interactive
+walkthrough.
+
 ## API
 
 | Endpoint | Method | Purpose |
