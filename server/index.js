@@ -5,19 +5,17 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Anthropic from '@anthropic-ai/sdk';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
+// Shared Anthropic client + JSON helpers (also used by the prospecting platform).
+import { anthropic, MODEL, requireClaude, firstText, parseJsonLoose, callJson } from './ai.js';
+import { platform } from './platform.js';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const NEWS_API_KEY = process.env.NEWS_API_KEY || '';
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || '';
-
-const anthropic = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
 
 // ── Brand: Market One content pillars ────────────────────────────────────────
 export const PILLARS = [
@@ -54,74 +52,7 @@ const SOURCE_ALLOWLIST = [
 const SENTIMENTS = ['positive', 'neutral', 'negative'];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function requireClaude(res) {
-  if (!anthropic) {
-    res.status(500).json({
-      error: 'ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your key.',
-    });
-    return false;
-  }
-  return true;
-}
-
-function firstText(message) {
-  const block = (message?.content || []).find((b) => b.type === 'text');
-  return block ? block.text : '';
-}
-
-// Tolerant JSON extraction — handles ```json fences and surrounding prose.
-function parseJsonLoose(text) {
-  if (!text) return null;
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1] : text;
-  try {
-    return JSON.parse(candidate);
-  } catch {
-    const start = candidate.search(/[[{]/);
-    if (start === -1) return null;
-    const end = Math.max(candidate.lastIndexOf(']'), candidate.lastIndexOf('}'));
-    if (end <= start) return null;
-    try {
-      return JSON.parse(candidate.slice(start, end + 1));
-    } catch {
-      return null;
-    }
-  }
-}
-
-// Structured-output call that returns parsed JSON.
-// Belt-and-suspenders: we pass `output_config` (enforced on models that support
-// structured outputs) AND embed the schema in the prompt, so we still get valid
-// JSON even if the SDK/endpoint ignores the param.
-async function callJson({ system, user, schema, maxTokens = 4096 }) {
-  const userWithSchema = schema
-    ? `${user}\n\nRespond with ONLY a single JSON value that conforms to this JSON Schema. No prose, no code fences:\n${JSON.stringify(schema)}`
-    : user;
-  const req = {
-    model: MODEL,
-    max_tokens: maxTokens,
-    messages: [{ role: 'user', content: userWithSchema }],
-  };
-  if (system) req.system = system;
-  if (schema) req.output_config = { format: { type: 'json_schema', schema } };
-
-  try {
-    const message = await anthropic.messages.create(req);
-    return parseJsonLoose(firstText(message));
-  } catch (err) {
-    // If the endpoint rejects structured outputs outright, retry without it.
-    if (schema) {
-      const message = await anthropic.messages.create({
-        model: MODEL,
-        max_tokens: maxTokens,
-        system,
-        messages: [{ role: 'user', content: userWithSchema }],
-      });
-      return parseJsonLoose(firstText(message));
-    }
-    throw err;
-  }
-}
+// requireClaude / firstText / parseJsonLoose / callJson are imported from ./ai.js
 
 function hostOf(url) {
   try {
@@ -333,7 +264,11 @@ async function fetchTopByPillarWebSearch({ from, to, perTopic }) {
 // ── App ──────────────────────────────────────────────────────────────────────
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '4mb' }));
+
+// Prospecting platform (companies, contacts, triggers, prospects, sequences,
+// CRM, opportunity scoring, AI research/outreach, dashboard).
+app.use('/api/platform', platform);
 
 app.get('/api/health', (_req, res) => {
   res.json({

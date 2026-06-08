@@ -1,10 +1,46 @@
-# Market One — Content Intelligence Portal
+# Market One — Portal
 
-A full-stack content-intelligence newsroom for Market One: it pulls **real, properly sourced** financial/business news with **exact article links**, segments it into Market One's content pillars, runs AI analysis, generates on-brand copy and branded graphics, and runs an approval → publish workflow with Slack alerts.
+This repo contains two complementary products on one stack (Node/Express + React/Vite + Claude):
+
+1. **Prospecting Platform** *(default app)* — a purpose-built "Apollo + HubSpot + Public-Company Intelligence" system for agencies, IR firms, and capital-markets advisors selling to publicly traded companies. Company database, contact enrichment, news/trigger monitoring, prospecting workflow, email sequencing, CRM, a smart opportunity-scoring engine, AI research + outreach, and a dashboard.
+2. **Content Intelligence Portal** — a content-intelligence newsroom that pulls **real, sourced** financial news, runs AI analysis, and generates on-brand copy + branded graphics. (Still served by the API; the previous UI lives in git history.)
 
 Built to run locally and to be extended inside Claude Code.
 
-> **Real, linked news is the whole point.** Every story keeps its exact source URL — shown on the card (“Source ↗”) and in the Studio (Open / Copy). Nothing is sample data.
+---
+
+## Prospecting Platform
+
+The default UI (`client/src/App.jsx`) is the prospecting platform. It runs on an **in-memory store** (`server/store.js`) seeded with illustrative public companies, contacts, news triggers, sequences, and CRM activity — so every module is usable on first run. Swap the store for Postgres later without changing the routes.
+
+**Modules (all live at MVP depth):**
+
+| # | Module | Where |
+| --- | --- | --- |
+| 1 | Company database + CSV bulk import & dedupe | Companies tab |
+| 2 | Contact enrichment (AI-inferred execs) + email verification | Company → Contacts |
+| 3 | News & trigger monitoring (financings, mgmt changes, M&A, listings…) | News & Triggers tab |
+| 4 | Prospecting workflow (11-stage Kanban + tags) | Prospects tab |
+| 5 | Email sequencing (multi-step, personalization variables, preview) | Sequences tab |
+| 6 | Gmail integration (status + simulated send → logged to CRM) | Settings / Outreach |
+| 7 | CRM (activities, tasks, chronological timeline) | Company → CRM |
+| 8 | Smart opportunity engine (Prospect Score 1–100) | Opportunities tab |
+| + | AI research agent + AI outreach writer & first-line personalizer | Company → AI Research / Outreach |
+| + | Executive dashboard | Dashboard tab |
+
+AI features (research, outreach, contact enrichment, news scan) use Claude and require `ANTHROPIC_API_KEY`. Everything else works without a key.
+
+**Platform API** is mounted at `/api/platform` — e.g. `GET /api/platform/companies`, `GET /api/platform/dashboard`, `GET /api/platform/board`, `POST /api/platform/companies/import`, `POST /api/platform/companies/:id/enrich`, `POST /api/platform/companies/:id/score`, `POST /api/platform/ai/research/:id`, `POST /api/platform/ai/write-email`. See `server/platform.js`.
+
+> **Note on data:** the seeded companies/contacts are illustrative (e.g. `*.example` domains), and AI-enriched contacts are clearly flagged with confidence scores. Wire real providers (SEC EDGAR, SEDAR+, an email-verification API, LinkedIn enrichment, the Gmail API) before using for live outreach.
+
+---
+
+## Content Intelligence Portal
+
+A content-intelligence newsroom for Market One: it pulls **real, properly sourced** financial/business news with **exact article links**, segments it into Market One's content pillars, runs AI analysis, generates on-brand copy and branded graphics, and runs an approval → publish workflow with Slack alerts.
+
+> **Real, linked news is the whole point.** Every story keeps its exact source URL. Nothing is sample data.
 
 ## How news is sourced
 
