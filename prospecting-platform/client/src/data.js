@@ -103,7 +103,8 @@ const act = (type, text, daysAgo) => ({ id: uid('ac'), type, text, date: iso(day
 function company(o) {
   return {
     watchlist: false, tags: [], contacts: [], financings: [], signals: [],
-    activities: [], opportunity: null, addedAt: iso(o._added ?? 30), notes: o.notes || '', ...o,
+    activities: [], opportunity: null, addedAt: iso(o._added ?? 30), notes: o.notes || '',
+    avgVolume: null, cash: null, dataUpdatedAt: iso(o._updated ?? 2), ...o,
   };
 }
 
@@ -299,6 +300,26 @@ export const DEMO_COMPANIES = [
   }),
 ];
 
+// Avg daily volume (shares), cash & equivalents, and how fresh each record is.
+const FINANCIALS = {
+  'co-aurelia': { avgVolume: '1.4M', cash: 'C$24M', _updated: 1 },
+  'co-northpeak': { avgVolume: '820K', cash: 'C$11M', _updated: 2 },
+  'co-cascade': { avgVolume: '640K', cash: 'C$33M', _updated: 1 },
+  'co-helix': { avgVolume: '410K', cash: 'C$72M', _updated: 3 },
+  'co-quantum': { avgVolume: '1.1M', cash: 'C$8M', _updated: 1 },
+  'co-borealis': { avgVolume: '290K', cash: 'C$54M', _updated: 4 },
+  'co-summit': { avgVolume: '2.3M', cash: 'C$2.4M', _updated: 2 },
+  'co-meridian': { avgVolume: '380K', cash: 'C$3.1M', _updated: 6 },
+  'co-titan': { avgVolume: '1.9M', cash: 'C$31M', _updated: 1 },
+  'co-vertex': { avgVolume: '520K', cash: 'C$140M', _updated: 9 },
+  'co-emberly': { avgVolume: '540K', cash: 'C$0.9M', _updated: 19 },
+  'co-novacore': { avgVolume: '700K', cash: 'C$210M', _updated: 3 },
+};
+for (const c of DEMO_COMPANIES) {
+  const f = FINANCIALS[c.id];
+  if (f) { c.avgVolume = f.avgVolume; c.cash = f.cash; c.dataUpdatedAt = iso(f._updated); }
+}
+
 // ── Sample email sequences ───────────────────────────────────────────────────
 export const DEMO_SEQUENCES = [
   {
@@ -413,6 +434,8 @@ const COLUMN_ALIASES = {
   hq: ['headquarters', 'hq', 'location', 'city'],
   website: ['website', 'url', 'domain'],
   irContact: ['ir', 'ir contact', 'investor relations', 'ir email'],
+  avgVolume: ['avg volume', 'average volume', 'avg daily volume', 'volume', 'avg vol'],
+  cash: ['cash', 'cash equivalents', 'cash & equivalents', 'cash and equivalents', 'cash on hand'],
 };
 
 // Map a CSV into company objects, then dedupe against existing records (by
@@ -450,9 +473,12 @@ export function importCompaniesFromCsv(text, existing, extraTags = []) {
       hq: get('hq') || match?.hq || '',
       website: get('website') || match?.website || '',
       irContact: get('irContact') || match?.irContact || '',
+      avgVolume: get('avgVolume') || match?.avgVolume || '',
+      cash: get('cash') || match?.cash || '',
     };
+    const now = new Date().toISOString();
     if (match) {
-      const merged = { ...match, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v)), tags: withTags(match.tags) };
+      const merged = { ...match, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v)), tags: withTags(match.tags), dataUpdatedAt: now };
       companies = companies.map((c) => (c.id === match.id ? merged : c));
       byTicker.set((merged.ticker || '').toUpperCase(), merged);
       byName.set(norm(merged.name), merged);
@@ -460,7 +486,7 @@ export function importCompaniesFromCsv(text, existing, extraTags = []) {
       updated++; duplicates++;
     } else {
       const co = company({
-        id: uid('co'), ...fields, sharePrice: null, marketCap: null,
+        id: uid('co'), ...fields, sharePrice: null, marketCap: null, dataUpdatedAt: now,
         status: 'New Prospect', tags: withTags([fields.exchange].filter(Boolean)), _added: 0,
       });
       companies.push(co);
@@ -473,11 +499,11 @@ export function importCompaniesFromCsv(text, existing, extraTags = []) {
   return { created, updated, duplicates, companies, affectedIds };
 }
 
-export const SAMPLE_CSV = `Company,Ticker,Exchange,Industry,Market Cap,Headquarters,Website
-Pinnacle Zinc Corp,PZC,TSXV,Mining,C$64M,Vancouver BC,pinnaclezinc.ca
-Lumen AI Holdings,LMN,CSE,Technology,C$120M,Toronto ON,lumenai.io
-Cascade Copper Inc,CCU,TSXV,Mining,C$211M,Vancouver BC,cascadecopper.com
-Apex Therapeutics,APX,TSX,Life Sciences,C$430M,Montreal QC,apextx.com`;
+export const SAMPLE_CSV = `Company,Ticker,Exchange,Industry,Market Cap,Avg Volume,Cash,Headquarters,Website
+Pinnacle Zinc Corp,PZC,TSXV,Mining,C$64M,910K,C$6.2M,Vancouver BC,pinnaclezinc.ca
+Lumen AI Holdings,LMN,CSE,Technology,C$120M,1.3M,C$14M,Toronto ON,lumenai.io
+Cascade Copper Inc,CCU,TSXV,Mining,C$211M,640K,C$33M,Vancouver BC,cascadecopper.com
+Apex Therapeutics,APX,TSX,Life Sciences,C$430M,380K,C$58M,Montreal QC,apextx.com`;
 
 // A sample conference attendee list — mixes a known issuer (Aurelia) with new
 // ones so the dedupe + tag-on-import behaviour is visible.

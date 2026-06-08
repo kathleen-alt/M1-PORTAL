@@ -264,6 +264,7 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 .kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; margin: 0; font-size: 13px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; color: var(--text-dim); }
+.stale { color: var(--warn); }
 .tag-row { display: flex; gap: 7px; flex-wrap: wrap; }
 
 /* ── Contacts ── */

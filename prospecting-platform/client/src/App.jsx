@@ -22,6 +22,7 @@ function timeAgo(iso) {
   return `${Math.round(d / 86400)}d ago`;
 }
 const newId = (p) => `${p}-${Math.random().toString(36).slice(2, 8)}`;
+const isStale = (iso) => iso && (Date.now() - new Date(iso).getTime()) / 86400000 >= 14;
 
 // ── Root / shell ─────────────────────────────────────────────────────────────
 export default function App() {
@@ -346,10 +347,13 @@ function Companies({ companies, onOpen, onImport, flash, onlyWatch, setOnlyWatch
                 <span className={`star ${c.watchlist ? '' : 'off'}`} onClick={(e) => { e.stopPropagation(); onToggleWatch(c.id); }} title={c.watchlist ? 'Remove from watchlist' : 'Add to watchlist'}>★</span>
                 {c.name}
               </span>
-              <span className="muted co-sub">{c.ticker}:{c.exchange} · {c.hq}</span>
+              <span className="muted co-sub">
+                {c.ticker}:{c.exchange} · {c.hq}
+                {c.dataUpdatedAt && <> · <span className={isStale(c.dataUpdatedAt) ? 'stale' : ''}>upd {timeAgo(c.dataUpdatedAt)}</span></>}
+              </span>
             </span>
             <span className="muted">{c.industry}{c.sector ? <><br /><span style={{ fontSize: 11 }}>{c.sector}</span></> : null}</span>
-            <span className="muted">{c.marketCapStr || '—'}</span>
+            <span className="muted">{c.marketCapStr || '—'}{c.avgVolume ? <><br /><span style={{ fontSize: 11 }}>Vol {c.avgVolume}/day</span></> : null}</span>
             <span><StatusPill status={c.status} /></span>
             <span className="sig-dots">
               {(c.signals || []).slice(0, 4).map((s) => <span key={s.id} className="sig-dot" title={SIGNAL_TYPES[s.type]?.label} style={{ background: SIGNAL_TYPES[s.type]?.accent }} />)}
@@ -696,7 +700,10 @@ function CompanyDetail({ company: c, sequences, onClose, onUpdate, onActivity, o
               <h2 style={{ margin: 0, fontSize: 22 }}>{c.name}</h2>
               <StatusPill status={c.status} />
             </div>
-            <div className="muted" style={{ fontSize: 13 }}>{c.ticker}:{c.exchange} · {c.sector || c.industry} · {c.marketCapStr || '—'} · {c.hq}</div>
+            <div className="muted" style={{ fontSize: 13 }}>
+              {c.ticker}:{c.exchange} · {c.sector || c.industry} · {c.marketCapStr || '—'} · {c.hq}
+              {c.dataUpdatedAt && <> · <span className={isStale(c.dataUpdatedAt) ? 'stale' : ''}>Updated {timeAgo(c.dataUpdatedAt)}</span></>}
+            </div>
           </div>
           <button className={`btn sm ${c.watchlist ? 'primary' : 'ghost'}`} onClick={() => onUpdate({ watchlist: !c.watchlist })}>{c.watchlist ? '★ Watching' : '☆ Watch'}</button>
           <button className="btn sm ghost" onClick={onClose}>✕</button>
@@ -728,8 +735,11 @@ function Overview({ c, onUpdate, onActivity }) {
           <dt>Website</dt><dd>{c.website ? <a className="link" href={`https://${c.website.replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer">{c.website} ↗</a> : '—'}</dd>
           <dt>Share price</dt><dd>{c.sharePrice != null ? `$${c.sharePrice}` : '—'}</dd>
           <dt>Market cap</dt><dd>{c.marketCapStr || '—'}</dd>
+          <dt>Avg daily volume</dt><dd>{c.avgVolume ? `${c.avgVolume} shares/day` : '—'}</dd>
+          <dt>Cash &amp; equiv.</dt><dd>{c.cash || '—'}</dd>
           <dt>IR contact</dt><dd>{c.irContact || '—'}</dd>
           <dt>Added</dt><dd>{timeAgo(c.addedAt)}</dd>
+          <dt>Data updated</dt><dd className={isStale(c.dataUpdatedAt) ? 'stale' : ''}>{c.dataUpdatedAt ? timeAgo(c.dataUpdatedAt) : '—'}{isStale(c.dataUpdatedAt) ? ' · refresh' : ''}</dd>
         </dl>
       </div>
 
