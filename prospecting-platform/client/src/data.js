@@ -34,6 +34,12 @@ export const SIGNAL_TYPES = {
   'm&a': { label: 'M&A', accent: '#EC4899' },
   'new-listing': { label: 'New listing', accent: '#06B6D4' },
   'drill-results': { label: 'Drill results', accent: '#F59E0B' },
+  'resource-estimate': { label: 'Resource estimate', accent: '#D97706' },
+  permit: { label: 'Permit / approval', accent: '#0EA5E9' },
+  analyst: { label: 'Analyst coverage', accent: '#14B8A6' },
+  'insider-buying': { label: 'Insider buying', accent: '#84CC16' },
+  partnership: { label: 'Partnership / offtake', accent: '#F472B6' },
+  'index-inclusion': { label: 'Index inclusion', accent: '#818CF8' },
   'price-move': { label: 'Share-price move', accent: '#22C55E' },
   'volume-spike': { label: 'Volume spike', accent: '#10B981' },
   earnings: { label: 'Earnings', accent: '#64748B' },
@@ -70,8 +76,9 @@ export function scoreCompany(c) {
   const ir = sigs.filter((s) => ['management-change', 'ir-initiative'].includes(s.type)).length;
   if (ir) { const p = Math.min(18, ir * 9); score += p; parts.push({ label: 'IR / management change', pts: p }); }
 
-  const growth = sigs.filter((s) => ['m&a', 'new-listing', 'volume-spike', 'price-move', 'drill-results'].includes(s.type)).length;
-  if (growth) { const p = Math.min(16, growth * 6); score += p; parts.push({ label: 'Growth signals', pts: p }); }
+  const GROWTH = ['m&a', 'new-listing', 'volume-spike', 'price-move', 'drill-results', 'resource-estimate', 'permit', 'analyst', 'insider-buying', 'partnership', 'index-inclusion'];
+  const growth = sigs.filter((s) => GROWTH.includes(s.type)).length;
+  if (growth) { const p = Math.min(18, growth * 5); score += p; parts.push({ label: 'Growth & catalyst signals', pts: p }); }
 
   const fresh = sigs.some((s) => (now - new Date(s.date).getTime()) / day <= 10);
   if (fresh) { score += 6; parts.push({ label: 'Active this week', pts: 6 }); }
@@ -96,7 +103,7 @@ const contact = (name, title, role, domain, status, confidence, location, first)
   location,
 });
 
-const sig = (type, headline, daysAgo, source = 'Newsfile') => ({ id: uid('sg'), type, headline, date: iso(daysAgo), source, url: '#' });
+const sig = (type, headline, daysAgo, source = 'Company news release (Newsfile)', url = '#') => ({ id: uid('sg'), type, headline, date: iso(daysAgo), source, url });
 const fin = (type, amount, amountValue, daysAgo) => ({ type, amount, amountValue, date: ymd(daysAgo) });
 const act = (type, text, daysAgo) => ({ id: uid('ac'), type, text, date: iso(daysAgo) });
 
@@ -318,6 +325,57 @@ const FINANCIALS = {
 for (const c of DEMO_COMPANIES) {
   const f = FINANCIALS[c.id];
   if (f) { c.avgVolume = f.avgVolume; c.cash = f.cash; c.dataUpdatedAt = iso(f._updated); }
+}
+
+// Additional signals (incl. more drill results) with their provenance/source.
+// [type, headline, daysAgo, source, url?]
+const EXTRA_SIGNALS = {
+  'co-aurelia': [
+    ['drill-results', 'Aurelia extends Coyote Creek with 18.7 g/t Au over 6.4m — best hole to date', 8, 'Company news release (Newsfile)'],
+    ['resource-estimate', 'Aurelia files maiden 1.2 Moz gold resource estimate (NI 43-101)', 12, 'SEDAR+ filing', 'https://www.sedarplus.ca'],
+    ['analyst', 'Canaccord initiates coverage on Aurelia with a Speculative Buy', 6, 'Canaccord Genuity'],
+  ],
+  'co-northpeak': [
+    ['drill-results', 'NorthPeak hits 1.8% Li2O over 22m at Wabigoon — wide high-grade zone', 5, 'Company news release (Newsfile)'],
+    ['permit', 'NorthPeak receives exploration permit for the Wabigoon expansion', 14, 'Govt. of Ontario'],
+  ],
+  'co-cascade': [
+    ['drill-results', 'Cascade drills 0.92% Cu over 120m at the Highland porphyry', 13, 'Company news release (Newsfile)'],
+    ['analyst', 'BMO raises Cascade Copper target after the Highland deal', 7, 'BMO Capital Markets'],
+  ],
+  'co-helix': [
+    ['partnership', 'Helix signs co-development deal with a global pharma partner', 8, 'Company news release'],
+    ['analyst', 'Two sell-side analysts initiate on Helix post-offering', 10, 'Street research'],
+  ],
+  'co-quantum': [
+    ['partnership', 'Quantum Edge lands enterprise pilot with a Tier-1 cloud provider', 4, 'Company news release'],
+    ['insider-buying', 'Quantum Edge CEO buys 250k shares in the open market', 6, 'SEDI insider filing', 'https://www.sedi.ca'],
+  ],
+  'co-borealis': [
+    ['index-inclusion', 'Borealis added to the S&P/TSX Renewable Energy & Clean Tech index', 9, 'S&P Dow Jones Indices'],
+  ],
+  'co-summit': [
+    ['drill-results', 'Summit Silver steps out 320 g/t Ag over 8.4m at Eagle Ridge', 5, 'Company news release (Newsfile)'],
+    ['resource-estimate', 'Summit Silver to deliver a maiden resource estimate in Q3', 12, 'Corporate update'],
+  ],
+  'co-titan': [
+    ['drill-results', 'Titan intersects 2.1% U3O8 over 5.6m at its Athabasca target', 4, 'Company news release (Newsfile)'],
+    ['analyst', 'Red Cloud initiates Titan Uranium with a Buy rating', 7, 'Red Cloud Securities'],
+  ],
+  'co-novacore': [
+    ['analyst', 'Three analysts raise NovaCore targets after the guidance beat', 8, 'Street research'],
+    ['insider-buying', 'NovaCore director purchases shares following earnings', 7, 'SEDI insider filing', 'https://www.sedi.ca'],
+  ],
+  'co-meridian': [
+    ['partnership', 'Meridian signs a distribution agreement with a national pharmacy chain', 12, 'Company news release'],
+  ],
+  'co-vertex': [
+    ['analyst', 'Analyst downgrades Vertex on valuation after the run-up', 20, 'Street research'],
+  ],
+};
+for (const c of DEMO_COMPANIES) {
+  (EXTRA_SIGNALS[c.id] || []).forEach(([type, headline, days, source, url]) => c.signals.push(sig(type, headline, days, source, url)));
+  c.signals.sort((a, b) => new Date(b.date) - new Date(a.date)); // newest first
 }
 
 // ── Sample email sequences ───────────────────────────────────────────────────

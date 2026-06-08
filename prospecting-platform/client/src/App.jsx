@@ -24,6 +24,12 @@ function timeAgo(iso) {
 const newId = (p) => `${p}-${Math.random().toString(36).slice(2, 8)}`;
 const isStale = (iso) => iso && (Date.now() - new Date(iso).getTime()) / 86400000 >= 14;
 
+// Where a signal came from — a link when we have a source URL, else plain text.
+function SourceLink({ s }) {
+  if (s?.url && s.url !== '#') return <a className="link" href={s.url} target="_blank" rel="noreferrer">{s.source} ↗</a>;
+  return <span>{s?.source || 'Unknown source'}</span>;
+}
+
 // ── Root / shell ─────────────────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab] = useState('Dashboard');
@@ -255,7 +261,7 @@ function Dashboard({ companies, sequences, onOpen, onGo, onWatchlist }) {
                   <span className="sig-dot" style={{ background: t?.accent }} />
                   <span style={{ minWidth: 0 }}>
                     <span className="sig-mini-head">{s.headline}</span>
-                    <span className="muted" style={{ fontSize: 11.5 }}>{t?.label} · {s.company.ticker} · {timeAgo(s.date)}</span>
+                    <span className="muted" style={{ fontSize: 11.5 }}>{t?.label} · {s.company.ticker} · {s.source} · {timeAgo(s.date)}</span>
                   </span>
                 </button>
               );
@@ -493,7 +499,7 @@ function Signals({ companies, onOpen, onFlag }) {
               <span className="sig-tag" style={{ background: `${t?.accent}26`, color: t?.accent }}>{t?.label}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <button className="sig-head" onClick={() => onOpen(s.company.id)}>{s.headline}</button>
-                <div className="muted" style={{ fontSize: 12 }}>{s.company.name} · {s.company.ticker}:{s.company.exchange} · {s.source} · {timeAgo(s.date)}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{s.company.name} · {s.company.ticker}:{s.company.exchange} · Source: <SourceLink s={s} /> · {timeAgo(s.date)}</div>
               </div>
               <button className="btn sm" onClick={() => onFlag(s.company)}>⚑ Flag opportunity</button>
             </div>
@@ -744,11 +750,20 @@ function Overview({ c, onUpdate, onActivity }) {
       </div>
 
       <div className="panel pad">
-        <div className="section-label">Prospect score · {c._score.score}/100</div>
+        <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          Prospect score · {c._score.score}/100
+          <span className="band" style={{ color: scoreBand(c._score.score).accent, borderColor: scoreBand(c._score.score).accent }}>{scoreBand(c._score.score).label}</span>
+        </div>
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 12px', lineHeight: 1.5 }}>
+          How timely &amp; actionable this prospect is right now (1–100). Every public company starts at a base of 18; recent
+          financings, IR/management changes, and growth catalysts add points, with a boost for activity in the last 10 days.
+          <b style={{ color: '#22c55e' }}> Hot ≥75</b> · <b style={{ color: '#f59e0b' }}>Warm ≥50</b> · <b style={{ color: '#64748b' }}>Cool</b>.
+        </p>
         <div className="score-parts">
-          {c._score.parts.length ? c._score.parts.map((p, i) => (
+          <div className="score-part"><span className="muted">Base interest</span><span className="bar"><span style={{ width: '52%' }} /></span><b>+18</b></div>
+          {c._score.parts.map((p, i) => (
             <div className="score-part" key={i}><span>{p.label}</span><span className="bar"><span style={{ width: `${Math.min(100, p.pts * 3.5)}%` }} /></span><b>+{p.pts}</b></div>
-          )) : <div className="muted" style={{ fontSize: 13 }}>Base interest only — no active signals yet.</div>}
+          ))}
         </div>
       </div>
 
@@ -820,7 +835,7 @@ function SignalsTab({ c }) {
                 <span className="sig-dot" style={{ background: t?.accent }} />
                 <span style={{ minWidth: 0 }}>
                   <span className="sig-mini-head">{s.headline}</span>
-                  <span className="muted" style={{ fontSize: 11.5 }}>{t?.label} · {s.source} · {timeAgo(s.date)}</span>
+                  <span className="muted" style={{ fontSize: 11.5 }}>{t?.label} · Source: <SourceLink s={s} /> · {timeAgo(s.date)}</span>
                 </span>
               </div>
             );
