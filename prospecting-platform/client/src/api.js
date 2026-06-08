@@ -22,10 +22,10 @@ export const api = {
   config: () => (demo.enabled ? Promise.resolve({ hasAnthropicKey: false, demo: true }) : jsonFetch('/api/config')),
   enrich: (c) => (demo.enabled ? demoEngine.enrich(c) : jsonFetch('/api/enrich', post({ company: lean(c) }))),
   research: (c) => (demo.enabled ? demoEngine.research(c) : jsonFetch('/api/research', post({ company: lean(c) }))),
-  outreach: (c, contact, channel, signal) =>
+  outreach: (c, contact, channel, signal, opts = {}) =>
     (demo.enabled
-      ? demoEngine.outreach(c, contact, channel)
-      : jsonFetch('/api/outreach', post({ company: lean(c), contact, channel, type: channel === 'LinkedIn' ? 'linkedin' : 'email', signal }))),
+      ? demoEngine.outreach(c, contact, channel, opts)
+      : jsonFetch('/api/outreach', post({ company: lean(c), contact, channel, type: channel === 'LinkedIn' ? 'linkedin' : 'email', signal, angle: opts.angle, instruction: opts.instruction }))),
   firstLine: (c, signal) =>
     (demo.enabled ? demoEngine.firstLine(c) : jsonFetch('/api/first-line', post({ company: lean(c), signal }))),
 };

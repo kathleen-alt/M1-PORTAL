@@ -608,20 +608,60 @@ function demoResearch(c) {
   };
 }
 
-function demoOutreach(c, contactObj, channel) {
+function demoOutreach(c, contactObj, channel, opts = {}) {
   const v = varsForCompany(c, contactObj);
   const f = c.financings?.[0];
-  const firstLine = f
-    ? `Congratulations on closing your ${f.amount} ${f.type.toLowerCase()} — a strong vote of confidence in ${c.name}'s story.`
-    : `${v.latestHeadline || `Saw the latest from ${c.name}`} caught my eye.`;
-  const subject = channel === 'LinkedIn' ? '' : `Investor awareness for ${c.name} after the raise`;
-  const body = `Hi ${v.firstName},\n\n${firstLine} We work with ${c.exchange}-listed ${c.industry.toLowerCase()} companies to turn moments like this into sustained investor interest — the right narrative, in front of the right funds and retail audiences.\n\nWould a 15-minute call next week be worth it to share how we'd approach ${c.name}?\n\nBest,\nMarket One`;
+  const sig0 = c.signals?.[0];
+  const angle = opts.angle || 'auto';
+  let firstLine, subject, ask;
+  switch (angle) {
+    case 'conference':
+      firstLine = `I saw ${c.name} is active in ${c.industry.toLowerCase()} and wanted to connect ahead of the next conference.`;
+      subject = `Quick meeting with ${c.name} at the conference?`;
+      ask = `Would you have 20 minutes to meet on site? Happy to work around your schedule.`;
+      break;
+    case 'reengage':
+      firstLine = `It's been a while — I wanted to reconnect given ${sig0?.headline || `the latest at ${c.name}`}.`;
+      subject = `Reconnecting on ${c.name}`;
+      ask = `Worth a quick catch-up to share what's new on our side?`;
+      break;
+    case 'short':
+      firstLine = `${sig0?.headline || `Saw the latest from ${c.name}`} — impressive.`;
+      subject = `${c.name} — a quick idea`;
+      ask = `Open to a 15-minute call this week?`;
+      break;
+    case 'milestone':
+      firstLine = `${sig0?.headline || `Congrats on the recent progress at ${c.name}`} — a strong proof point.`;
+      subject = `Turning your latest news into investor attention`;
+      ask = `Could we share how we'd amplify this with investors?`;
+      break;
+    case 'awareness':
+      firstLine = `${c.name}'s story deserves a wider investor audience on ${c.exchange}.`;
+      subject = `Broadening ${c.name}'s shareholder base`;
+      ask = `Worth 15 minutes to walk through our awareness approach?`;
+      break;
+    case 'formal':
+      firstLine = `I am reaching out regarding investor-relations support for ${c.name} following ${sig0?.headline ? `your announcement that ${sig0.headline.toLowerCase()}` : 'recent developments'}.`;
+      subject = `Investor relations support for ${c.name}`;
+      ask = `I would welcome the opportunity to discuss a tailored program at your convenience.`;
+      break;
+    case 'post-financing':
+    default:
+      firstLine = f
+        ? `Congratulations on closing your ${f.amount} ${f.type.toLowerCase()} — a strong vote of confidence in ${c.name}'s story.`
+        : `${v.latestHeadline || `Saw the latest from ${c.name}`} caught my eye.`;
+      subject = f ? `Investor awareness for ${c.name} after the raise` : `Investor awareness for ${c.name}`;
+      ask = `Would a 15-minute call next week be worth it to share how we'd approach ${c.name}?`;
+  }
+  if (channel === 'LinkedIn') subject = '';
+  const extra = opts.instruction && /case study/i.test(opts.instruction) ? ' Happy to share a relevant case study from a comparable issuer.' : '';
+  const body = `Hi ${v.firstName},\n\n${firstLine} We work with ${c.exchange}-listed ${c.industry.toLowerCase()} companies to turn moments like this into sustained investor interest — the right narrative, in front of the right funds and retail audiences.${extra}\n\n${ask}\n\nBest,\nMarket One`;
   return { firstLine, subject, body };
 }
 
 export const demoEngine = {
   async enrich(c) { await wait(700); return { contacts: demoEnrich(c) }; },
   async research(c) { await wait(800); return { research: demoResearch(c) }; },
-  async outreach(c, contactObj, channel) { await wait(750); return { draft: demoOutreach(c, contactObj, channel) }; },
+  async outreach(c, contactObj, channel, opts) { await wait(750); return { draft: demoOutreach(c, contactObj, channel, opts) }; },
   async firstLine(c) { await wait(450); const f = c.financings?.[0]; return { firstLine: f ? `Congratulations on closing your ${f.amount} ${f.type.toLowerCase()}.` : `Saw the latest from ${c.name} — impressive momentum.` }; },
 };

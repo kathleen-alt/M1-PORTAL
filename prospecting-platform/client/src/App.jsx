@@ -919,13 +919,80 @@ function Crm({ c, onActivity }) {
   );
 }
 
+// ── Email preview + Gmail ────────────────────────────────────────────────────
+const DEFAULT_SIGNATURE = `Best regards,
+
+Kathleen
+Market One — Investor Relations & Capital Markets
+kathleen@marketone.ca · marketone.ca`;
+
+const FROM_EMAIL = 'kathleen@marketone.ca';
+const FROM_NAME = 'Kathleen · Market One';
+
+// Gmail "compose" deep link — opens Gmail with the message prefilled.
+function gmailUrl(to, subject, body) {
+  return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to || '')}&su=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(body || '')}`;
+}
+
+function GmailIcon() {
+  return (
+    <svg width="17" height="13" viewBox="0 0 52 40" style={{ verticalAlign: '-1px' }} aria-hidden="true">
+      <rect x="2" y="2" width="48" height="36" rx="5" fill="#fff" stroke="#e0e0e0" />
+      <path d="M4 6l22 16L48 6" fill="none" stroke="#EA4335" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function GmailPreview({ to, subject, body, signature, channel }) {
+  const isEmail = channel !== 'LinkedIn';
+  const composed = `${body}${signature ? `\n\n${signature}` : ''}`;
+  return (
+    <div className="gmail">
+      <div className="gmail-bar"><GmailIcon /> {isEmail ? 'Gmail — message preview' : 'LinkedIn — message preview'}</div>
+      <div className="gmail-msg">
+        {isEmail && <div className="gmail-subject">{subject || '(no subject)'}</div>}
+        <div className="gmail-head">
+          <div className="av sm">{FROM_NAME.slice(0, 1)}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13 }}><b>{FROM_NAME}</b>{isEmail && <span className="gm-dim"> &lt;{FROM_EMAIL}&gt;</span>}</div>
+            <div className="gm-dim" style={{ fontSize: 12 }}>to {to ? `${to.name} <${to.email}>` : 'your recipient'}</div>
+          </div>
+        </div>
+        <div className="gmail-body">{composed}</div>
+      </div>
+    </div>
+  );
+}
+
+// Preset prompt angles for the AI outreach writer (plus a free-text instruction).
+const OUTREACH_ANGLES = [
+  { id: 'auto', label: 'Auto (best angle)', instruction: "Choose the most relevant angle based on the company's latest signal or financing." },
+  { id: 'post-financing', label: 'Post-financing congrats', instruction: 'Congratulate them on their recent financing, then pitch post-raise investor awareness.' },
+  { id: 'conference', label: 'Conference meeting', instruction: 'Request a short in-person meeting at an upcoming industry conference.' },
+  { id: 'awareness', label: 'Investor awareness', instruction: 'Pitch an investor-awareness campaign to broaden their shareholder base and liquidity.' },
+  { id: 'milestone', label: 'News / milestone hook', instruction: 'Open on their latest news or milestone and tie it to improving investor visibility.' },
+  { id: 'reengage', label: 'Re-engage', instruction: "Warmly re-engage a former or lapsed contact; reference prior interest and what's new." },
+  { id: 'short', label: 'Short & punchy', instruction: 'Keep it under 70 words with one clear ask. No fluff.' },
+  { id: 'formal', label: 'Formal & detailed', instruction: 'Use a formal, credible tone for a CEO/CFO; include one concrete value point.' },
+];
+
 function AiTab({ c, sequences, onEnroll, flash }) {
   const [research, setResearch] = useState(null);
   const [rLoading, setRLoading] = useState(false);
   const [channel, setChannel] = useState('Email');
   const [contactIdx, setContactIdx] = useState(0);
+  const [angle, setAngle] = useState('auto');
+  const [customPrompt, setCustomPrompt] = useState('');
   const [draft, setDraft] = useState(null);
   const [dLoading, setDLoading] = useState(false);
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [signature, setSignature] = useState(() => { try { return localStorage.getItem('m1_signature') || DEFAULT_SIGNATURE; } catch { return DEFAULT_SIGNATURE; } });
+  const [editSig, setEditSig] = useState(false);
+  useEffect(() => { try { localStorage.setItem('m1_signature', signature); } catch { /* ignore */ } }, [signature]);
+
+  const recipient = (c.contacts || [])[contactIdx];
+  const withSig = `${body}${signature ? `\n\n${signature}` : ''}`;
 
   async function runResearch() {
     setRLoading(true);
@@ -934,10 +1001,13 @@ function AiTab({ c, sequences, onEnroll, flash }) {
   }
   async function runOutreach() {
     setDLoading(true);
-    try { const d = await api.outreach(c, (c.contacts || [])[contactIdx], channel, c.signals?.[0]); setDraft(d.draft); }
-    catch (e) { flash(e.message); } finally { setDLoading(false); }
+    try {
+      const ang = OUTREACH_ANGLES.find((a) => a.id === angle);
+      const instruction = `${ang?.instruction || ''}${customPrompt ? ` Additional guidance: ${customPrompt}` : ''}`.trim();
+      const d = await api.outreach(c, recipient, channel, c.signals?.[0], { angle, instruction });
+      setDraft(d.draft); setSubject(d.draft.subject || ''); setBody(d.draft.body || '');
+    } catch (e) { flash(e.message); } finally { setDLoading(false); }
   }
-  const fullEmail = draft ? `${draft.subject ? `Subject: ${draft.subject}\n\n` : ''}${draft.body}` : '';
 
   return (
     <div className="detail-grid">
@@ -962,26 +1032,50 @@ function AiTab({ c, sequences, onEnroll, flash }) {
 
       <div className="panel pad">
         <div className="section-label">AI outreach writer</div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+
+        <div className="section-label" style={{ fontSize: 10.5, marginBottom: 6 }}>Prompt angle — pick one</div>
+        <div className="angle-chips">
+          {OUTREACH_ANGLES.map((a) => (
+            <button key={a.id} className={`pill ${angle === a.id ? 'active' : ''}`} onClick={() => setAngle(a.id)} title={a.instruction}>{a.label}</button>
+          ))}
+        </div>
+        <input style={{ width: '100%', marginTop: 8 }} value={customPrompt} onChange={(e) => setCustomPrompt(e.target.value)} placeholder="Optional: your own instruction (e.g. mention our mining case study, keep to 3 sentences)…" />
+
+        <div style={{ display: 'flex', gap: 8, margin: '12px 0 10px', flexWrap: 'wrap' }}>
           <select value={channel} onChange={(e) => setChannel(e.target.value)}><option>Email</option><option>LinkedIn</option></select>
           <select value={contactIdx} onChange={(e) => setContactIdx(Number(e.target.value))} style={{ flex: 1, minWidth: 140 }}>
             {(c.contacts || []).length ? c.contacts.map((p, i) => <option key={i} value={i}>{p.name} · {p.title}</option>) : <option>No contacts — enrich first</option>}
           </select>
-          <button className="btn sm primary" onClick={runOutreach} disabled={dLoading}>{dLoading ? <span className="spinner" /> : '✦'} Draft</button>
+          <button className="btn sm primary" onClick={runOutreach} disabled={dLoading}>{dLoading ? <span className="spinner" /> : '✦'} {draft ? 'Regenerate' : 'Generate'}</button>
         </div>
+
         {draft ? (
           <>
-            <textarea className="copy-out" rows={9} value={fullEmail} readOnly style={{ width: '100%' }} />
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button className="btn sm" onClick={() => { navigator.clipboard?.writeText(fullEmail); flash('Copied'); }}>Copy</button>
-              <a className="btn sm" href={`mailto:${(c.contacts || [])[contactIdx]?.email || ''}?subject=${encodeURIComponent(draft.subject || '')}&body=${encodeURIComponent(draft.body)}`}>Open in mail ↗</a>
+            {channel === 'Email' && <label className="fld" style={{ marginBottom: 8 }}>Subject<input value={subject} onChange={(e) => setSubject(e.target.value)} /></label>}
+            <label className="fld">Message (editable)<textarea className="copy-out" rows={7} value={body} onChange={(e) => setBody(e.target.value)} /></label>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '10px 0 6px' }}>
+              <div className="section-label" style={{ margin: 0 }}>Signature</div>
+              <button className="btn sm ghost" onClick={() => setEditSig((v) => !v)}>{editSig ? 'Done' : 'Edit'}</button>
+            </div>
+            {editSig
+              ? <textarea className="copy-out" rows={4} value={signature} onChange={(e) => setSignature(e.target.value)} style={{ width: '100%' }} />
+              : <div className="muted" style={{ fontSize: 12, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{signature}</div>}
+
+            <div className="section-label" style={{ marginTop: 14 }}>Preview</div>
+            <GmailPreview to={recipient} subject={subject} body={body} signature={signature} channel={channel} />
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <a className="btn sm primary" href={gmailUrl(recipient?.email, subject, withSig)} target="_blank" rel="noreferrer"><GmailIcon /> Send via Gmail</a>
+              <button className="btn sm" onClick={() => { navigator.clipboard?.writeText(`${channel === 'Email' && subject ? `Subject: ${subject}\n\n` : ''}${withSig}`); flash('Copied'); }}>Copy</button>
+              <a className="btn sm ghost" href={`mailto:${recipient?.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(withSig)}`}>Mail app ↗</a>
             </div>
           </>
-        ) : <div className="muted" style={{ fontSize: 13 }}>Draft a personalized {channel.toLowerCase()} with an AI first line tied to {c.name}'s latest signal.</div>}
+        ) : <div className="muted" style={{ fontSize: 13 }}>Pick an angle (and optionally add your own instruction), then Generate a personalized {channel.toLowerCase()} with an AI first line tied to {c.name}'s latest signal.</div>}
 
-        <div className="section-label" style={{ marginTop: 16 }}>Add to sequence{(c.contacts || [])[contactIdx] ? ` · ${(c.contacts || [])[contactIdx].name}` : ''}</div>
+        <div className="section-label" style={{ marginTop: 16 }}>Add to sequence{recipient ? ` · ${recipient.name}` : ''}</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {sequences.map((s) => <button key={s.id} className="btn sm" onClick={() => onEnroll(s, (c.contacts || [])[contactIdx])}>{s.name} →</button>)}
+          {sequences.map((s) => <button key={s.id} className="btn sm" onClick={() => onEnroll(s, recipient)}>{s.name} →</button>)}
         </div>
       </div>
     </div>

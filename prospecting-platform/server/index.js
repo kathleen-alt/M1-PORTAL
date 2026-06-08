@@ -200,7 +200,7 @@ app.post('/api/research', async (req, res) => {
 // follow-up built off a company + (optional) contact + signal.
 app.post('/api/outreach', async (req, res) => {
   if (!requireKey(res)) return;
-  const { company, contact, type = 'email', channel, signal, variables = {} } = req.body || {};
+  const { company, contact, type = 'email', channel, signal, variables = {}, instruction = '' } = req.body || {};
   if (!company?.name) return res.status(400).json({ error: 'company.name is required' });
 
   const wantsSubject = (channel || type) === 'email' || channel === 'Email';
@@ -222,6 +222,7 @@ app.post('/api/outreach', async (req, res) => {
     `Recipient: ${contact?.name || 'the IR/exec contact'}${contact?.title ? `, ${contact.title}` : ''}\n` +
     `Company: ${company.name} (${company.ticker || ''}:${company.exchange || ''}) — ${company.industry || ''}\n` +
     `Channel: ${channel || type}\nRecent trigger: ${trigger || 'general prospecting'}\n` +
+    (instruction ? `Angle / instruction: ${instruction}\n` : '') +
     `Variables: ${JSON.stringify(variables)}\n\n` +
     `Return a punchy personalized first line, ${wantsSubject ? 'a subject line, ' : 'an empty subject, '}` +
     'and the full message body (120-150 words).';
