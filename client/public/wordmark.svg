@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 64" role="img" aria-label="Market One">
+  <g fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 50V18l11 18 11-18v32"/>
+  </g>
+  <circle cx="44" cy="22" r="5" fill="#3B82F6"/>
+  <text x="62" y="42" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="700" fill="#ffffff" letter-spacing="0.5">Market<tspan fill="#3B82F6">One</tspan></text>
+</svg>
