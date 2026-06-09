@@ -24,6 +24,8 @@ interface RawProject {
   facilitySqFt?: number;
   website?: string;
   summary?: string;
+  /** Real install year, when known (otherwise derived). */
+  year?: number;
 }
 
 const RAW_PROJECTS: RawProject[] = [
@@ -294,6 +296,28 @@ const ADDITIONAL_RAW: RawProject[] = [
   { name: "Jungle Java – Canton, MI", industry: "indoor_playground_operator", city: "Canton", region: "MI", country: "US", website: "junglejavaplay.com" },
   { name: "Jungle Java – Farmington Hills, MI", industry: "indoor_playground_operator", city: "Farmington Hills", region: "MI", country: "US", website: "junglejavaplay.com" },
   { name: "Safari Run – San Mateo, CA", industry: "indoor_playground_operator", city: "San Mateo", region: "CA", country: "US", website: "safarirun.com" },
+
+  // --- From sales project listing (2023–2025) ---
+  { name: "Active Start Child Care (Harvest Hill): Edmonton, AB", industry: "childcare_operator", city: "Edmonton", region: "AB", country: "CA", year: 2025 },
+  { name: "Kidz Fun Centre: Ajax, ON", industry: "family_entertainment_center", city: "Ajax", region: "ON", country: "CA", year: 2025 },
+  { name: "City of Chaska Parks & Recreation: Chaska, MN", industry: "parks_recreation", city: "Chaska", region: "MN", country: "US", year: 2025 },
+  { name: "Lake Crystal Rec Center: Lake Crystal, MN", industry: "recreation_center", city: "Lake Crystal", region: "MN", country: "US", year: 2025 },
+  { name: "Zwang Inc.: Oakville, ON", industry: "indoor_playground_operator", city: "Oakville", region: "ON", country: "CA", year: 2024 },
+  { name: "Playville Kids: Port Perry, ON", industry: "indoor_playground_operator", city: "Port Perry", region: "ON", country: "CA", year: 2024 },
+  { name: "Town of Coaldale: Coaldale, AB", industry: "municipal_recreation", city: "Coaldale", region: "AB", country: "CA", year: 2024 },
+  { name: "Active Start Child Care (Country Hills): Calgary, AB", industry: "childcare_operator", city: "Calgary", region: "AB", country: "CA", year: 2024 },
+  { name: "Little Cubs Family Fun Centre: Port Elgin, ON", industry: "family_entertainment_center", city: "Port Elgin", region: "ON", country: "CA", year: 2024 },
+  { name: "Florida State University (Panama City): Panama City, FL", industry: "private_school", city: "Panama City", region: "FL", country: "US", year: 2024 },
+  { name: "Premier Recreation Equipment: Orlando, FL", industry: "indoor_playground_operator", city: "Orlando", region: "FL", country: "US", year: 2024 },
+  { name: "YMCA of Greater Seattle: Seattle, WA", industry: "ymca", city: "Seattle", region: "WA", country: "US", year: 2024 },
+  { name: "Wildlings Play Place: Oregon City, OR", industry: "indoor_playground_operator", city: "Oregon City", region: "OR", country: "US", year: 2024 },
+  { name: "YWCA Lubbock: Lubbock, TX", industry: "ywca", city: "Lubbock", region: "TX", country: "US", year: 2024 },
+  { name: "Hide N Play Cafe: Lapeer, MI", industry: "play_cafe", city: "Lapeer", region: "MI", country: "US", year: 2023 },
+  { name: "Grace Bible Church: Ann Arbor, MI", industry: "large_church", city: "Ann Arbor", region: "MI", country: "US", year: 2023 },
+  { name: "Trinity Baptist Church: Ocala, FL", industry: "large_church", city: "Ocala", region: "FL", country: "US", year: 2023 },
+  { name: "Play Date MTX: Mansfield, TX", industry: "indoor_playground_operator", city: "Mansfield", region: "TX", country: "US", year: 2023 },
+  { name: "Beaches Management: Orlando, FL", industry: "resort", city: "Orlando", region: "FL", country: "US", year: 2023 },
+  { name: "Pensionfund Realty (Coquitlam): Coquitlam, BC", industry: "shopping_center", city: "Coquitlam", region: "BC", country: "CA", year: 2023 },
 ];
 
 /** Stable id from a project name. */
@@ -327,7 +351,7 @@ function build(raw: RawProject): OrcaProject {
   const mid = (band.low + band.high) / 2;
   const spread = ((h % 31) - 15) / 100; // -15%..+15%
   const contractValue = Math.round((mid * (1 + spread)) / 5000) * 5000;
-  const year = 2017 + (h % 8); // 2017..2024
+  const year = raw.year ?? 2017 + (h % 8); // real year when known, else derived
   return {
     id,
     name: raw.name,
