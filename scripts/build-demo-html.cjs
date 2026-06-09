@@ -100,11 +100,59 @@ const html = `<!doctype html>
 <script>
 const DATA = ${JSON.stringify(data)};
 const TABS = [
-  ["who","🎯 Who to Contact"],["territory","🗺️ Territory Manager"],
+  ["who","🎯 Who to Contact"],["source","🧲 Source Leads"],
+  ["territory","🗺️ Territory Manager"],
   ["pipeline","📊 CRM Pipeline"],["campaigns","✉️ Campaigns"],
   ["market","📈 Market Expansion"],["heatmap","🔥 Heat Map"],
   ["analytics","📉 Analytics"],["portfolio","🐋 Portfolio"]
 ];
+
+// --- In-browser lead classifier (ported from src/lib/classify.ts) ----------
+const RULES=[
+  ["ymca",["ymca"]],["ywca",["ywca"]],
+  ["multi_campus_church",["multi-campus","multi campus"]],
+  ["large_church",["church","baptist","fellowship","ministry","parish","chapel","tabernacle","worship","christian center","christian centre","cathedral"]],
+  ["montessori",["montessori"]],["preschool",["preschool","pre-school","pre school"]],
+  ["early_learning",["early learning","early childhood"]],
+  ["daycare",["daycare","day care","child care","childcare","nursery","kindergarten"]],
+  ["private_school",["academy","private school","school"]],
+  ["childrens_museum",["children's museum","childrens museum","kids museum"]],
+  ["science_center",["science centre","science center","discovery science"]],
+  ["aviation_museum",["aviation","air museum","space center","space centre"]],
+  ["aquarium",["aquarium","sea life","marine"]],
+  ["discovery_center",["discovery centre","discovery center"]],
+  ["museum",["museum","zoo","heritage"]],["cultural_center",["cultural centre","cultural center"]],
+  ["trampoline_park",["trampoline","jump","bounce"]],
+  ["play_cafe",["play cafe","play café","cafe & play"]],
+  ["birthday_party_center",["party place","party centre","party center"]],
+  ["indoor_playground_operator",["indoor playground","playland","play centre","play center","playground","play place","soft play","play zone","playzone"]],
+  ["family_entertainment_center",["family entertainment","family fun","fun center","fun centre","fec","entertainment center","entertainment centre","arcade"]],
+  ["childrens_activity_center",["activity centre","activity center","kids club","day camp"]],
+  ["waterpark",["waterpark","water park","waterslide","water slide"]],
+  ["rv_resort",["rv resort","rv park","campground","jellystone"]],
+  ["resort",["resort","casino","lodge"]],["hotel",["hotel","inn","suites"]],
+  ["sports_complex",["sports complex","sportzone","sports arena","sportsplex","dek hockey","soccer centre","soccer center"]],
+  ["athletic_facility",["fitness","gym","gymnastics","athletic","health club","country club","dance academy"]],
+  ["municipal_recreation",["aquatic centre","aquatic center","leisure centre","leisure center"]],
+  ["parks_recreation",["parks & recreation","parks and recreation","park district","parks dept","parks department"]],
+  ["recreation_center",["recreation center","recreation centre","rec center","rec centre","leisure"]],
+  ["community_center",["community center","community centre","community & cultural","spark center","spark centre"]],
+  ["pediatric_clinic",["pediatric","paediatric","children's clinic","kids dental"]],
+  ["childrens_hospital",["children's hospital","childrens hospital"]],
+  ["indigenous_community_center",["first nation","indigenous","metis","nation of","band office","friendship centre"]],
+  ["library",["library"]],
+  ["shopping_center",["mall","shopping centre","shopping center","town centre","outlet"]],
+  ["airport_family_zone",["airport","terminal"]],
+  ["military_family_resource",["military family","mfrc","cfb"]],
+  ["apartment_developer",["apartments","apartment","residences","lofts"]],
+  ["mixed_use_development",["mixed-use","mixed use"]],
+  ["nonprofit_family_org",["non-profit","nonprofit","foundation","society","boys & girls"]],
+];
+const CA=["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"];
+const US=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
+function classify(name,hint){const hay=(name+" "+(hint||"")).toLowerCase();for(const[ind,terms]of RULES){if(terms.some(t=>hay.includes(t)))return{industry:ind,confidence:80};}return{industry:"nonprofit_family_org",confidence:35};}
+function findRegion(line){const toks=(line.toUpperCase().match(/\\b[A-Z]{2}\\b/g))||[];for(const t of toks){if(CA.includes(t))return{region:t,country:"CA"};if(US.includes(t))return{region:t,country:"US"};}return null;}
+function splitLine(l){if(l.includes("\\t"))return l.split("\\t");if(l.includes("|"))return l.split("|");if(l.includes(","))return l.split(",");if(l.includes(" - "))return l.split(" - ");return[l];}
 const money=n=>new Intl.NumberFormat("en-CA",{style:"currency",currency:"CAD",maximumFractionDigits:0}).format(n);
 const band=n=>n<75000?"Under $75K":n<150000?"$75K–$150K":n<300000?"$150K–$300K":n<500000?"$300K–$500K":"$500K+";
 const compact=n=>new Intl.NumberFormat("en-CA",{style:"currency",currency:"CAD",notation:"compact",maximumFractionDigits:0}).format(n);
@@ -208,7 +256,45 @@ function view_portfolio(){
     +'</tbody></table></div>';
 }
 
-const VIEWS={who:view_who,territory:view_territory,pipeline:view_pipeline,campaigns:view_campaigns,market:view_market,heatmap:view_heatmap,analytics:view_analytics,portfolio:view_portfolio};
+function view_source(){
+  setTimeout(()=>{
+    const btn=document.getElementById("clsBtn");if(!btn)return;
+    btn.onclick=()=>{
+      const txt=document.getElementById("clsIn").value;
+      const def=(document.getElementById("clsRegion").value||"").toUpperCase();
+      const lines=txt.split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean);
+      const tax=DATA.taxonomy;const out=[];
+      for(const line of lines){
+        const parts=splitLine(line).map(s=>s.trim());const name=parts[0];if(!name||/^name$/i.test(name))continue;
+        let reg=null,ctry=null;const fr=findRegion(line);
+        if(parts[2]&&(CA.includes(parts[2].toUpperCase())||US.includes(parts[2].toUpperCase()))){reg=parts[2].toUpperCase();ctry=CA.includes(reg)?"CA":"US";}
+        else if(fr){reg=fr.region;ctry=fr.country;}
+        else if(def){reg=def;ctry=CA.includes(def)?"CA":(US.includes(def)?"US":null);}
+        const c=classify(name,parts[2]);const meta=tax[c.industry]||{label:c.industry,tier:6};
+        out.push({name,industry:meta.label,tier:meta.tier,region:reg,warn:reg?"":"no region"});
+      }
+      out.sort((a,b)=>a.tier-b.tier);
+      const tierColor=t=>t<=1?"var(--good)":t<=2?"var(--cold)":t<=4?"var(--warm)":"var(--muted)";
+      document.getElementById("clsOut").innerHTML=out.length?
+        '<div class="note">'+out.length+' organizations classified & tiered (sorted best-fit first). In the full app these are deduped, scored, and one click adds them to the CRM.</div><div class="tablewrap"><table><thead><tr><th>Organization</th><th>Classified As</th><th>Tier</th><th>Region</th></tr></thead><tbody>'
+        +out.map(r=>'<tr><td><b>'+esc(r.name)+'</b></td><td class="muted">'+esc(r.industry)+'</td><td style="color:'+tierColor(r.tier)+';font-weight:700">Tier '+r.tier+'</td><td class="muted">'+(r.region||'<span style="color:var(--warm)">set region</span>')+'</td></tr>').join("")
+        +'</tbody></table></div>':'<div class="note">Nothing parsed — paste at least one organization.</div>';
+    };
+  },0);
+  const sample="YMCA of Greater Vancouver, Vancouver, BC\\nWoodlands Family Church, Plano, TX\\nLittle Sprouts Daycare, Calgary, AB\\nRiverbend Trampoline Park, Boise, ID\\nOkanagan Regional Library, Kelowna, BC\\nComanche Nation Community Center, Lawton, OK";
+  return '<h1>Source the Right Clients</h1><p class="sub">The #1 job: keep the funnel full. Paste a list from any directory, spreadsheet, or search — every line is auto-classified into the 6-tier prospect taxonomy and ranked best-fit first. (This tab runs the real classifier live, in your browser.)</p>'
+    +'<div class="grid g3" style="margin-bottom:16px">'
+    +'<div class="card"><b>📋 Import a list</b><div class="note" style="margin-top:6px">Paste directory exports / spreadsheets / search results → classified, scored, deduped, added to CRM. <i>Try it below.</i></div></div>'
+    +'<div class="card"><b>🌐 Live source (OpenStreetMap)</b><div class="note" style="margin-top:6px">Pull real orgs for a city + categories with no API key. Optional Google Places for richer contacts. Runs in the deployed app.</div></div>'
+    +'<div class="card"><b>📊 Track & log</b><div class="note" style="margin-top:6px">Per-account activity timeline (calls/emails/notes), auto-logged stage changes, and pipeline tracking.</div></div></div>'
+    +'<div class="card"><b>Live import classifier</b>'
+    +'<div class="note" style="margin:6px 0 10px">Format: <code>Name, City, REGION</code> (region optional if a default is set).</div>'
+    +'<textarea id="clsIn" rows="6" style="width:100%;background:#06121c;border:1px solid #143a54;color:#fff;border-radius:9px;padding:10px;font-family:ui-monospace,monospace;font-size:12px">'+sample+'</textarea>'
+    +'<div style="display:flex;gap:10px;align-items:center;margin-top:10px"><input id="clsRegion" placeholder="Default region (e.g. BC)" style="width:200px;background:#06121c;border:1px solid #143a54;color:#fff;border-radius:9px;padding:8px 10px"><button id="clsBtn" style="background:var(--green);color:#fff;border:0;border-radius:9px;padding:9px 16px;font-weight:600;cursor:pointer">Classify & tier</button></div>'
+    +'<div id="clsOut" style="margin-top:14px"></div></div>';
+}
+
+const VIEWS={who:view_who,source:view_source,territory:view_territory,pipeline:view_pipeline,campaigns:view_campaigns,market:view_market,heatmap:view_heatmap,analytics:view_analytics,portfolio:view_portfolio};
 function show(id){document.getElementById("view").innerHTML=VIEWS[id]();document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.id===id));window.scrollTo(0,0);}
 const nav=document.getElementById("nav");
 TABS.forEach(([id,label])=>{const b=document.createElement("button");b.textContent=label;b.dataset.id=id;b.onclick=()=>show(id);nav.appendChild(b);});

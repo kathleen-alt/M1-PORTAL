@@ -24,6 +24,17 @@ npm run build && npm start
 
 ---
 
+## Filling the funnel: sourcing, outreach, tracking, logging
+
+The platform's job is to keep the top of the funnel full and every interaction logged:
+
+- **Source the right clients** (`/leads`) — three ways:
+  1. **Import a list** — paste a directory export / spreadsheet / search results (any of `Name`, `Name, City, REGION`, `…, website, phone`). Each line is auto-classified into the tiered taxonomy, scored, deduped, and added to the CRM. Works offline.
+  2. **Live source (OpenStreetMap)** — pull *real* organizations for a city + target categories with **no API key**. (Add `GOOGLE_MAPS_API_KEY` to swap in Places for richer contacts.)
+  3. **Search current leads** — filter the existing pipeline.
+- **Outreach** (`/campaigns`, `/territory`) — vertical cadences + AI emails referencing the most similar real Orca Coast project.
+- **Track & log** (`/leads/[id]`) — per-account detail page with scores, contacts, lookalikes, a **stage selector**, and an **activity timeline**: log calls/emails/notes; stage changes are recorded automatically.
+
 ## The Strategic Prospecting Engine (the core)
 
 This is the platform's most important feature. It is implemented as **real, deterministic, explainable logic** in `src/lib/prospecting/` — not random numbers.

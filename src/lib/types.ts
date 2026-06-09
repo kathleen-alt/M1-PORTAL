@@ -252,3 +252,21 @@ export interface GeneratedEmail {
   cta: string;
   objectionHandling?: string;
 }
+
+/** A logged interaction with an account (outreach, calls, notes, stage moves). */
+export type ActivityType =
+  | "note"
+  | "email"
+  | "call"
+  | "linkedin"
+  | "sms"
+  | "meeting"
+  | "stage_change";
+
+export interface ActivityLog {
+  id: string;
+  leadId: string;
+  type: ActivityType;
+  summary: string;
+  createdAt: string;
+}

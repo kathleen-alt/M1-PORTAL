@@ -9,7 +9,7 @@ import {
 import { computeAnalytics } from "../src/lib/analytics";
 import { generateEmail } from "../src/lib/ai/email";
 import { CAMPAIGN_TEMPLATES } from "../src/lib/data/campaigns";
-import { industryLabel } from "../src/lib/taxonomy";
+import { industryLabel, ALL_INDUSTRIES, industryTier } from "../src/lib/taxonomy";
 
 function focusFor(industry: string): string[] {
   if (industry.includes("church")) return CAMPAIGN_TEMPLATES[1].focusPoints;
@@ -66,8 +66,12 @@ async function main() {
     }),
   );
 
+  const taxonomy: Record<string, { label: string; tier: number }> = {};
+  for (const ind of ALL_INDUSTRIES) taxonomy[ind] = { label: industryLabel(ind), tier: industryTier(ind) };
+
   const data = {
     generatedAt: new Date().toISOString(),
+    taxonomy,
     analytics: computeAnalytics(leads),
     recommendations: recsWithEmail,
     market: marketExpansion(leads, projects),

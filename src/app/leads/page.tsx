@@ -4,6 +4,7 @@ import { recommendLead } from "@/lib/prospecting/recommend";
 import { ALL_INDUSTRIES, industryLabel } from "@/lib/taxonomy";
 import type { Industry } from "@/lib/types";
 import { PageHeader } from "@/components/ui";
+import SourcingPanel from "@/components/SourcingPanel";
 import { categoryBadge, moneyRange, scoreColor } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +26,12 @@ export default async function LeadDiscovery({
     <div>
       <PageHeader
         title="Lead Discovery Engine"
-        subtitle="Search by industry, city, province/state, postal code, and radius. Each result is enriched with contacts and scored for confidence and fit."
+        subtitle="Source the right clients three ways: import an existing list, pull real organizations live from OpenStreetMap, or search the current pipeline. Everything is auto-classified into the prospect taxonomy and scored."
       />
 
+      <SourcingPanel />
+
+      <h2 className="section-title mb-3">Search current leads</h2>
       <form className="card mb-6 grid grid-cols-5 items-end gap-3" method="get">
         <label className="text-xs text-orca-300">
           Industry
@@ -101,7 +105,9 @@ export default async function LeadDiscovery({
               return (
                 <tr key={lead.id} className="border-t border-orca-800 hover:bg-orca-900/40">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-white">{lead.name}</div>
+                    <a href={`/leads/${lead.id}`} className="font-medium text-white hover:text-kelp-300 hover:underline">
+                      {lead.name}
+                    </a>
                     {lead.website && (
                       <a
                         href={lead.website}
