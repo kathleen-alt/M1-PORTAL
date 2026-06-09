@@ -155,6 +155,8 @@ function findRegion(line){const toks=(line.toUpperCase().match(/\\b[A-Z]{2}\\b/g
 function splitLine(l){if(l.includes("\\t"))return l.split("\\t");if(l.includes("|"))return l.split("|");if(l.includes(","))return l.split(",");if(l.includes(" - "))return l.split(" - ");return[l];}
 const money=n=>new Intl.NumberFormat("en-CA",{style:"currency",currency:"CAD",maximumFractionDigits:0}).format(n);
 const band=n=>n<75000?"Under $75K":n<150000?"$75K–$150K":n<300000?"$150K–$300K":n<500000?"$300K–$500K":"$500K+";
+const maps=o=>(o.lat!=null&&o.lng!=null)?("https://www.google.com/maps/search/?api=1&query="+o.lat+","+o.lng):("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent([o.name,o.city,o.region,o.country].filter(Boolean).join(", ")));
+const nurl=u=>u?(/^https?:\\/\\//i.test(u)?u:"https://"+u.replace(/^\\/+/,"")):"";
 const compact=n=>new Intl.NumberFormat("en-CA",{style:"currency",currency:"CAD",notation:"compact",maximumFractionDigits:0}).format(n);
 const col=s=>s>=80?"var(--good)":s>=60?"var(--cold)":s>=40?"var(--warm)":"var(--hot)";
 const badge=c=>c==="Hot"?"b-hot":c==="Warm"?"b-warm":"b-cold";
@@ -167,7 +169,8 @@ function recCard(r,i){
   const look=r.lookalikes.map(m=>'<span class="chip" title="'+esc(m.reasons.join(" · "))+'">'+esc(m.name)+' ('+m.similarity+'%)</span>').join("");
   return '<div class="card">'
     +'<div class="row"><div><div style="display:flex;gap:8px;align-items:center"><span class="muted" style="font-weight:700">#'+(i+1)+'</span><b style="color:#fff">'+esc(r.name)+'</b><span class="pill '+badge(r.category)+'">'+r.category+'</span></div>'
-    +'<div class="tag" style="margin-top:2px">'+esc(r.industry)+' · '+esc(r.city)+', '+esc(r.region)+' · Tier '+r.scores.tier+'</div></div>'+ring(r.scores.opportunity)+'</div>'
+    +'<div class="tag" style="margin-top:2px">'+esc(r.industry)+' · '+esc(r.city)+', '+esc(r.region)+' · Tier '+r.scores.tier+'</div>'
+    +'<div style="margin-top:4px;font-size:12px"><a href="'+maps({name:r.name,city:r.city,region:r.region,country:r.country})+'" target="_blank" style="color:var(--muted)">📍 Map</a>'+(r.website?' &nbsp; <a href="'+esc(nurl(r.website))+'" target="_blank" style="color:var(--muted)">🔗 Website</a>':'')+'</div></div>'+ring(r.scores.opportunity)+'</div>'
     +'<ul class="reasons">'+r.reasons.slice(0,4).map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>'
     +'<div class="bars">'+bar("Playground Fit",r.scores.playgroundFit)+bar("Budget Likelihood",r.scores.budgetLikelihood)+bar("Family Traffic",r.scores.familyTraffic)+bar("Decision-Maker Access",r.scores.decisionMakerAccess)+bar("Revenue Potential",r.scores.revenuePotential)+bar("Lead Qualification",r.leadScore)+'</div>'
     +'<div class="kv"><div><div class="lbl">Est. Value (indicative)</div><div class="v" title="Every playground is custom-scoped.">'+money(r.estimatedValue.low)+'–'+money(r.estimatedValue.high)+'</div></div>'
@@ -191,7 +194,7 @@ function stat(l,v){return '<div class="card stat"><div class="lbl">'+l+'</div><d
 function view_territory(){
   return '<h1>AI Territory Manager</h1><p class="sub">The weekly ranked list with contacts, estimated project size, the most similar past customer, and an AI-generated first-touch email per account.</p>'
     +DATA.recommendations.map((r,i)=>{const dm=r.decisionMakers[0];
-      return '<div class="card" style="margin-bottom:12px"><div class="row"><div><span class="muted" style="font-weight:700">#'+(i+1)+'</span> <b>'+esc(r.name)+'</b> <span class="tag">'+esc(r.industry)+' · '+esc(r.city)+', '+esc(r.region)+'</span>'+(r.website?'<div class="tag"><a href="'+esc(r.website)+'" target="_blank">'+esc(r.website.replace(/^https?:\\/\\//,""))+'</a></div>':"")+'</div>'
+      return '<div class="card" style="margin-bottom:12px"><div class="row"><div><span class="muted" style="font-weight:700">#'+(i+1)+'</span> <b>'+esc(r.name)+'</b> <span class="tag">'+esc(r.industry)+' · '+esc(r.city)+', '+esc(r.region)+'</span>'+'<div class="tag"><a href="'+maps({name:r.name,city:r.city,region:r.region,country:r.country})+'" target="_blank">📍 Map</a>'+(r.website?' &nbsp; <a href="'+esc(nurl(r.website))+'" target="_blank">🔗 '+esc(r.website.replace(/^https?:\\/\\//,""))+'</a>':"")+'</div></div>'
       +'<div style="text-align:right"><div class="lbl muted">Opportunity</div><div style="color:'+col(r.scores.opportunity)+';font-weight:700">'+r.scores.opportunity+' · '+r.closeProbability+'% close</div></div></div>'
       +'<div class="kv" style="grid-template-columns:repeat(3,1fr)"><div><div class="lbl">Contact</div><div class="v">'+(dm?esc(dm.name):"—")+'</div><div class="tag">'+(dm?esc(dm.email||""):"")+' '+(dm?esc(dm.phone||r.phone||""):"")+'</div></div>'
       +'<div><div class="lbl">Est. Project Size (ind.)</div><div class="v">'+money(r.estimatedValue.low)+'–'+money(r.estimatedValue.high)+'</div></div>'
@@ -222,7 +225,7 @@ function view_campaigns(){
   if(sq){
     const fmt=iso=>new Date(iso).toLocaleDateString("en-CA",{month:"short",day:"numeric"});
     out+='<h2 class="section-title" style="margin:22px 0 10px">Sample sequence enrollment — '+esc(sq.leadName)+'</h2>'
-      +'<div class="note">This is what "move into a sequence" produces: each step scheduled, with the email written and ready. Step 1 marked sent advances the account to Contacted automatically.</div>'
+      +'<div class="note">This is what "move into a sequence" produces: each step scheduled, with the email written and ready. Marking step 1 sent advances the account to Contacted — and with Gmail connected, each email lands in your Gmail Drafts for review (or sends automatically).</div>'
       +'<div class="card"><div class="row"><b>'+esc(sq.campaignName)+'</b><span class="pill b-warm">active</span></div><ol style="list-style:none;padding:0;margin:12px 0 0">'
       +sq.steps.map((s,i)=>'<li style="border:1px solid '+(i===0?"var(--green)":"#143a54")+';border-radius:9px;padding:10px;margin:6px 0;background:rgba(6,18,28,.4)"><div style="display:flex;justify-content:space-between"><span><span class="muted">Day '+s.day+'</span> &nbsp;'+(icon[s.channel]||"")+' '+esc(s.label)+'</span><span class="tag">'+(i===0?'<span class="hl">due '+fmt(s.dueAt)+'</span>':'due '+fmt(s.dueAt))+'</span></div>'
         +(s.subject?'<details style="margin-top:6px"><summary class="tag">Subject: '+esc(s.subject)+'</summary><pre style="white-space:pre-wrap;font-family:inherit;color:var(--ink);margin:6px 0 0">'+esc(s.body)+'</pre></details>':'')+'</li>').join("")
@@ -263,8 +266,8 @@ function view_portfolio(){
     document.querySelectorAll("#ptable tbody tr").forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(q)?"":"none";});};},0);
   return '<h1>Real Orca Coast Portfolio</h1><p class="sub">'+rows.length+' real completed projects (CA + US) — the reference set powering lookalike matching. Names, locations & websites are real. Value bands are indicative only: every playground is custom-scoped, so no fixed price is implied.</p>'
     +'<div style="margin-bottom:14px"><input id="psearch" type="search" placeholder="Filter by name, city, category…"></div>'
-    +'<div class="tablewrap"><table id="ptable"><thead><tr><th>Organization</th><th>Category</th><th>Location</th><th>Value Band (ind.)</th><th>Website</th></tr></thead><tbody>'
-    +rows.map(p=>'<tr><td><b>'+esc(p.name.split(/[:–]/)[0])+'</b></td><td class="muted">'+esc(p.industry)+'</td><td class="muted">'+esc([p.city,p.region].filter(Boolean).join(", "))+' '+p.country+'</td><td class="muted">'+band(p.value)+'</td><td>'+(p.website?'<a href="https://'+esc(p.website.replace(/^https?:\\/\\//,""))+'" target="_blank">link</a>':"—")+'</td></tr>').join("")
+    +'<div class="tablewrap"><table id="ptable"><thead><tr><th>Organization</th><th>Category</th><th>Location</th><th>Value Band (ind.)</th><th>Vet</th></tr></thead><tbody>'
+    +rows.map(p=>'<tr><td><b>'+esc(p.name.split(/[:–]/)[0])+'</b></td><td class="muted">'+esc(p.industry)+'</td><td class="muted">'+esc([p.city,p.region].filter(Boolean).join(", "))+' '+p.country+'</td><td class="muted">'+band(p.value)+'</td><td><a href="'+maps({name:p.name.split(/[:–]/)[0],city:p.city,region:p.region,country:p.country})+'" target="_blank">📍 Map</a>'+(p.website?' · <a href="'+esc(nurl(p.website))+'" target="_blank">🔗 Site</a>':"")+'</td></tr>').join("")
     +'</tbody></table></div>';
 }
 

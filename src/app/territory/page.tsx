@@ -4,7 +4,7 @@ import { generateEmail } from "@/lib/ai/email";
 import { CAMPAIGN_TEMPLATES } from "@/lib/data/campaigns";
 import { PageHeader } from "@/components/ui";
 import { industryLabel } from "@/lib/taxonomy";
-import { moneyRange, scoreColor } from "@/lib/format";
+import { mapsUrl, moneyRange, normalizeUrl, scoreColor } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -59,16 +59,33 @@ export default async function TerritoryManager() {
                       {industryLabel(rec.lead.industry)} · {rec.lead.address.city},{" "}
                       {rec.lead.address.region}
                     </div>
-                    {rec.lead.website && (
+                    <div className="mt-0.5 flex flex-wrap gap-3 text-xs">
                       <a
-                        href={rec.lead.website}
-                        className="text-xs text-orca-400 hover:underline"
+                        href={mapsUrl({
+                          name: rec.lead.name,
+                          city: rec.lead.address.city,
+                          region: rec.lead.address.region,
+                          country: rec.lead.address.country,
+                          lat: rec.lead.address.lat,
+                          lng: rec.lead.address.lng,
+                        })}
+                        className="text-orca-400 hover:text-kelp-300 hover:underline"
                         target="_blank"
                         rel="noreferrer"
                       >
-                        {rec.lead.website.replace(/^https?:\/\//, "")}
+                        📍 Map
                       </a>
-                    )}
+                      {normalizeUrl(rec.lead.website) && (
+                        <a
+                          href={normalizeUrl(rec.lead.website)}
+                          className="text-orca-400 hover:text-kelp-300 hover:underline"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          🔗 {rec.lead.website!.replace(/^https?:\/\//, "")}
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
 

@@ -15,6 +15,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (action === "pause") return NextResponse.json({ enrollment: setEnrollmentStatus(params.id, "paused") });
   if (action === "resume") return NextResponse.json({ enrollment: setEnrollmentStatus(params.id, "active") });
 
-  const enrollment = advanceEnrollment(params.id, action === "skipped" ? "skipped" : "sent");
-  return NextResponse.json({ enrollment });
+  const { enrollment, dispatch } = await advanceEnrollment(
+    params.id,
+    action === "skipped" ? "skipped" : "sent",
+  );
+  return NextResponse.json({ enrollment, dispatch });
 }

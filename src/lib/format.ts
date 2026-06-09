@@ -27,6 +27,42 @@ export function valueBand(n: number): string {
 export const VALUE_CAVEAT =
   "Indicative range only — every Orca Coast playground is custom-scoped.";
 
+/** Ensure a website string is a clickable absolute URL. */
+export function normalizeUrl(u?: string): string | undefined {
+  if (!u) return undefined;
+  return /^https?:\/\//i.test(u) ? u : `https://${u.replace(/^\/+/, "")}`;
+}
+
+/**
+ * A Google Maps link for vetting a lead/project's real-world location. Uses
+ * exact coordinates when available (e.g. OSM-sourced leads), otherwise a
+ * name + city + region search.
+ */
+export function mapsUrl(opts: {
+  name?: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  lat?: number;
+  lng?: number;
+}): string {
+  if (opts.lat != null && opts.lng != null) {
+    return `https://www.google.com/maps/search/?api=1&query=${opts.lat},${opts.lng}`;
+  }
+  const q = [opts.name, opts.city, opts.region, opts.country].filter(Boolean).join(", ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+}
+
+/** A short human label for an address. */
+export function locationLabel(addr: {
+  line1?: string;
+  city?: string;
+  region: string;
+  country?: string;
+}): string {
+  return [addr.line1, addr.city, addr.region, addr.country].filter(Boolean).join(", ");
+}
+
 export function scoreColor(score: number): string {
   if (score >= 80) return "text-emerald-400";
   if (score >= 60) return "text-orca-300";

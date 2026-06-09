@@ -62,6 +62,7 @@ export default function OutreachPanel({
       });
       const data = await res.json();
       if (data.enrollment) setEnrollment(data.enrollment);
+      if (data.dispatch) setMsg(data.dispatch.detail);
       router.refresh();
     } finally {
       setBusy("");

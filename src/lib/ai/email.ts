@@ -42,9 +42,13 @@ function templateEmail(ctx: EmailPromptContext): GeneratedEmail {
   // Role inboxes (info@/office@) have no real person — greet generically.
   const isRoleInbox = dm ? /inbox|^office$|general/i.test(dm.name) : false;
   const greeting = dm && !isRoleInbox ? `Hi ${firstName(dm.name)},` : "Hello,";
-  const industry = industryLabel(lead.industry).toLowerCase();
+  // Lowercase for prose, but preserve acronyms like YMCA / YWCA / FEC.
+  const industry = industryLabel(lead.industry)
+    .split(" ")
+    .map((w) => (/^[A-Z]{2,4}$/.test(w) ? w : w.toLowerCase()))
+    .join(" ");
   const ref = similarProject
-    ? `${similarProject.name} in ${similarProject.city}`
+    ? `${similarProject.name}${similarProject.city ? ` in ${similarProject.city}` : ""}`
     : "comparable organizations across Canada and the U.S.";
   const cta = "Would you be open to a quick 15-minute call next week?";
 

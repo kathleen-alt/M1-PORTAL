@@ -5,7 +5,7 @@ import { ALL_INDUSTRIES, industryLabel } from "@/lib/taxonomy";
 import type { Industry } from "@/lib/types";
 import { PageHeader } from "@/components/ui";
 import SourcingPanel from "@/components/SourcingPanel";
-import { categoryBadge, moneyRange, scoreColor } from "@/lib/format";
+import { categoryBadge, mapsUrl, moneyRange, scoreColor } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -121,7 +121,22 @@ export default async function LeadDiscovery({
                   </td>
                   <td className="px-4 py-3 text-orca-200">{industryLabel(lead.industry)}</td>
                   <td className="px-4 py-3 text-orca-200">
-                    {lead.address.city}, {lead.address.region}
+                    <a
+                      href={mapsUrl({
+                        name: lead.name,
+                        city: lead.address.city,
+                        region: lead.address.region,
+                        country: lead.address.country,
+                        lat: lead.address.lat,
+                        lng: lead.address.lng,
+                      })}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:text-kelp-300 hover:underline"
+                      title="Vet this location on Google Maps"
+                    >
+                      📍 {lead.address.city || lead.address.region}, {lead.address.region}
+                    </a>
                   </td>
                   <td className="px-4 py-3 text-orca-200">
                     {dm ? (

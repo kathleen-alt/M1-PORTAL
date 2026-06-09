@@ -23,6 +23,7 @@ import { ORCA_PROJECTS } from "./data/orcaProjects";
 import { CAMPAIGN_TEMPLATES } from "./data/campaigns";
 import { generateEmail } from "./ai/email";
 import { findLookalikes } from "./prospecting/lookalike";
+import { dispatchEmail, type DispatchResult } from "./email/send";
 
 // In-memory mutable state so edits persist for the process lifetime.
 // (globalThis caching survives Next.js hot-reload in dev.)
@@ -195,22 +196,32 @@ export function getEnrollment(id: string): Enrollment | undefined {
   return g.__orcaEnrollments!.find((e) => e.id === id);
 }
 
-/** Mark the current step sent/skipped and advance. Logs an activity. */
-export function advanceEnrollment(
+/**
+ * Mark the current step sent/skipped and advance. For an email step marked
+ * "sent", the message is dispatched through the configured provider (Gmail
+ * draft/send, Resend, SendGrid, or console). Logs an activity either way.
+ */
+export async function advanceEnrollment(
   id: string,
   action: "sent" | "skipped" = "sent",
-): Enrollment | undefined {
+): Promise<{ enrollment?: Enrollment; dispatch?: DispatchResult }> {
   const e = getEnrollment(id);
-  if (!e || e.status !== "active") return e;
+  if (!e || e.status !== "active") return { enrollment: e };
   const step = e.steps[e.currentIndex];
-  if (!step) return e;
+  if (!step) return { enrollment: e };
+
+  let dispatch: DispatchResult | undefined;
+  if (action === "sent" && step.channel === "email" && step.subject && step.toEmail) {
+    dispatch = await dispatchEmail({ to: step.toEmail, subject: step.subject, body: step.body ?? "" });
+  }
 
   step.status = action;
-  const verb = action === "sent" ? "Sent" : "Skipped";
+  const verb = action === "sent" ? (dispatch?.status === "drafted" ? "Drafted" : "Sent") : "Skipped";
+  const via = dispatch ? ` via ${dispatch.provider}` : "";
   addActivity(
     e.leadId,
     step.channel === "email" ? "email" : step.channel === "phone" ? "call" : "note",
-    `${verb} sequence step (Day ${step.day}): ${step.label}.`,
+    `${verb} sequence step (Day ${step.day}): ${step.label}${via}.`,
   );
 
   // Advance the standing of the lead on first send.
@@ -221,7 +232,7 @@ export function advanceEnrollment(
 
   e.currentIndex += 1;
   if (e.currentIndex >= e.steps.length) e.status = "completed";
-  return e;
+  return { enrollment: e, dispatch };
 }
 
 export function setEnrollmentStatus(

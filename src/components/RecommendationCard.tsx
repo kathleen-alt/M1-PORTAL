@@ -1,6 +1,6 @@
 import type { ProspectRecommendation } from "@/lib/types";
 import { industryLabel } from "@/lib/taxonomy";
-import { categoryBadge, moneyRange, scoreColor } from "@/lib/format";
+import { categoryBadge, mapsUrl, moneyRange, normalizeUrl, scoreColor } from "@/lib/format";
 import { ScoreBar, ScoreRing } from "./ui";
 
 export default function RecommendationCard({
@@ -27,6 +27,33 @@ export default function RecommendationCard({
           <p className="mt-0.5 text-xs text-orca-300">
             {industryLabel(lead.industry)} · {lead.address.city}, {lead.address.region} ·
             Tier {scores.tier}
+          </p>
+          <p className="mt-1 flex gap-3 text-xs">
+            <a
+              href={mapsUrl({
+                name: lead.name,
+                city: lead.address.city,
+                region: lead.address.region,
+                country: lead.address.country,
+                lat: lead.address.lat,
+                lng: lead.address.lng,
+              })}
+              target="_blank"
+              rel="noreferrer"
+              className="text-orca-400 hover:text-kelp-300 hover:underline"
+            >
+              📍 Map
+            </a>
+            {normalizeUrl(lead.website) && (
+              <a
+                href={normalizeUrl(lead.website)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-orca-400 hover:text-kelp-300 hover:underline"
+              >
+                🔗 Website
+              </a>
+            )}
           </p>
         </div>
         <ScoreRing score={scores.opportunity} label="Opp" />

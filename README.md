@@ -108,6 +108,6 @@ Set the relevant key in `.env` and the corresponding provider goes live automati
 
 - `OPENAI_API_KEY` → AI email/proposal generation
 - `GOOGLE_MAPS_API_KEY` → live lead discovery
-- `APOLLO_API_KEY` / `CLEARBIT_API_KEY` / `HUNTER_API_KEY` → contact enrichment
-- `SENDGRID_API_KEY` / `RESEND_API_KEY` → email delivery
+- `APOLLO_API_KEY` / `CLEARBIT_API_KEY` / `HUNTER_API_KEY` → contact enrichment & email finding
+- **Gmail** (`EMAIL_PROVIDER=gmail` + `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN`) → sequence steps create a **Gmail draft** for review by default (`EMAIL_SEND_MODE=send` to send directly). `SENDGRID_API_KEY` / `RESEND_API_KEY` also supported.
 - `DATABASE_URL` + `DATA_SOURCE=prisma` → PostgreSQL persistence

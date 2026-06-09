@@ -6,7 +6,7 @@ import { industryLabel } from "@/lib/taxonomy";
 import { PageHeader, ScoreBar, ScoreRing } from "@/components/ui";
 import ActivityPanel from "@/components/ActivityPanel";
 import OutreachPanel from "@/components/OutreachPanel";
-import { categoryBadge, moneyRange, scoreColor } from "@/lib/format";
+import { categoryBadge, locationLabel, mapsUrl, moneyRange, normalizeUrl, scoreColor } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +84,35 @@ export default function LeadDetail({ params }: { params: { id: string } }) {
         </div>
 
         <div className="space-y-4">
+          {/* Location & vetting */}
+          <div className="card">
+            <div className="section-title mb-2">Location &amp; Vetting</div>
+            <div className="text-sm text-orca-100">{locationLabel(lead.address)}</div>
+            {lead.phone && <div className="mt-1 text-sm text-orca-200">{lead.phone}</div>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a
+                href={mapsUrl({
+                  name: lead.name,
+                  city: lead.address.city,
+                  region: lead.address.region,
+                  country: lead.address.country,
+                  lat: lead.address.lat,
+                  lng: lead.address.lng,
+                })}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-ghost"
+              >
+                📍 View on Google Maps
+              </a>
+              {normalizeUrl(lead.website) && (
+                <a href={normalizeUrl(lead.website)} target="_blank" rel="noreferrer" className="btn-ghost">
+                  🔗 Visit website
+                </a>
+              )}
+            </div>
+          </div>
+
           {/* Contacts */}
           <div className="card">
             <div className="section-title mb-3">Contacts</div>
