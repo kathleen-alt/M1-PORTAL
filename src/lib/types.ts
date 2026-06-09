@@ -148,6 +148,13 @@ export interface OrgSignals {
   weeklyFamilyTraffic?: number;
 }
 
+export interface Socials {
+  linkedin?: string;
+  facebook?: string;
+  instagram?: string;
+  twitter?: string;
+}
+
 export interface Lead {
   id: string;
   name: string;
@@ -157,6 +164,9 @@ export interface Lead {
   address: Address;
   contacts: Contact[];
   signals: OrgSignals;
+  socials?: Socials;
+  /** ISO timestamp of the last successful enrichment pass. */
+  enrichedAt?: string;
   /** 0-100 confidence the lead record itself is real / well-formed. */
   dataConfidence: number;
   source: "google_maps" | "directory" | "public_db" | "website" | "manual";

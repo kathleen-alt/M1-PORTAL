@@ -244,6 +244,27 @@ export function setEnrollmentStatus(
   return e;
 }
 
+/**
+ * Record that a prospect replied: pause their active sequences (you don't keep
+ * auto-mailing someone who answered) and advance the pipeline to Responded.
+ * A Gmail/IMAP reply watcher calls this; it can also be triggered manually.
+ */
+export function markReplied(leadId: string, detail?: string): { paused: number } {
+  let paused = 0;
+  for (const e of g.__orcaEnrollments!) {
+    if (e.leadId === leadId && e.status === "active") {
+      e.status = "paused";
+      paused++;
+    }
+  }
+  addActivity(leadId, "email", `Prospect replied${detail ? `: ${detail}` : ""}. ${paused ? "Sequence paused." : ""}`.trim());
+  const lead = getLead(leadId);
+  if (lead && (lead.stage === "New Lead" || lead.stage === "Contacted")) {
+    updateLeadStage(leadId, "Responded");
+  }
+  return { paused };
+}
+
 export function getProjects(): OrcaProject[] {
   return ORCA_PROJECTS;
 }

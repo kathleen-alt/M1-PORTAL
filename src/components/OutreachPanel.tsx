@@ -122,9 +122,29 @@ export default function OutreachPanel({
         ) : (
           <SequenceView enrollment={enrollment} onAdvance={advance} busy={busy === "adv"} />
         )}
+
+        {enrollment && enrollment.status !== "completed" && (
+          <button className="btn-ghost mt-3" disabled={busy === "reply"} onClick={logReply}>
+            ↩︎ Log prospect reply (pauses sequence → Responded)
+          </button>
+        )}
       </div>
     </div>
   );
+
+  async function logReply() {
+    setBusy("reply");
+    try {
+      const res = await fetch(`/api/leads/${leadId}/replied`, { method: "POST" });
+      if (res.ok) {
+        setEnrollment((e) => (e ? { ...e, status: "paused" } : e));
+        setMsg("Reply logged — sequence paused, moved to Responded.");
+        router.refresh();
+      }
+    } finally {
+      setBusy("");
+    }
+  }
 }
 
 function SequenceView({

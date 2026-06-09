@@ -6,6 +6,7 @@ import { industryLabel } from "@/lib/taxonomy";
 import { PageHeader, ScoreBar, ScoreRing } from "@/components/ui";
 import ActivityPanel from "@/components/ActivityPanel";
 import OutreachPanel from "@/components/OutreachPanel";
+import EnrichmentPanel from "@/components/EnrichmentPanel";
 import { categoryBadge, locationLabel, mapsUrl, moneyRange, normalizeUrl, scoreColor } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,8 @@ export default function LeadDetail({ params }: { params: { id: string } }) {
               ))}
             </ul>
           </div>
+
+          <EnrichmentPanel lead={lead} />
 
           <OutreachPanel
             leadId={lead.id}

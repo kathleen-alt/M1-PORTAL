@@ -32,8 +32,9 @@ The platform's job is to keep the top of the funnel full and every interaction l
   1. **Import a list** — paste a directory export / spreadsheet / search results (any of `Name`, `Name, City, REGION`, `…, website, phone`). Each line is auto-classified into the tiered taxonomy, scored, deduped, and added to the CRM. Works offline.
   2. **Live source (OpenStreetMap)** — pull *real* organizations for a city + target categories with **no API key**. (Add `GOOGLE_MAPS_API_KEY` to swap in Places for richer contacts.)
   3. **Search current leads** — filter the existing pipeline.
-- **Outreach** (`/campaigns`, `/territory`) — vertical cadences + AI emails referencing the most similar real Orca Coast project.
-- **Track & log** (`/leads/[id]`) — per-account detail page with scores, contacts, lookalikes, a **stage selector**, and an **activity timeline**: log calls/emails/notes; stage changes are recorded automatically.
+- **Enrich** (`/leads/[id]` → ✨ Enrich data) — fills firmographics (size, facility, locations, budget, family traffic), finds contact emails + role inboxes, and pulls people/socials. Sources: category-calibrated **signal inference** (offline), **website scraping**, **Hunter/Apollo** (people), **Clearbit** (company). Reports the resulting lift in Opportunity Score.
+- **Outreach** (`/campaigns`, `/territory`, lead detail) — vertical cadences + AI emails referencing the most similar real Orca Coast project; find emails, then move a contact into a sequence. Steps send/draft via **Gmail** (or Resend/SendGrid).
+- **Track & log** (`/leads/[id]`, `/sequences`) — activity timeline (calls/emails/notes), auto-logged stage changes, and **reply tracking**: a prospect reply pauses the sequence and advances the lead to *Responded*.
 
 ## The Strategic Prospecting Engine (the core)
 
