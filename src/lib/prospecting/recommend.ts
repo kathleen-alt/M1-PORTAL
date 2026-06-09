@@ -59,9 +59,7 @@ function buildReasons(
 
   if (topMatch) {
     const loc = topMatch.city ? `${topMatch.city}, ${topMatch.region}` : topMatch.region;
-    reasons.push(
-      `Similar to ${topMatch.name} (${loc}), a ${formatMoney(topMatch.contractValue)} project.`,
-    );
+    reasons.push(`Similar to ${topMatch.name} (${loc}) — a comparable custom playground project.`);
   }
   if (scores.budgetLikelihood >= 70) reasons.push("Strong budget likelihood.");
   if (scores.familyTraffic >= 75) reasons.push("High family foot traffic.");
@@ -75,13 +73,6 @@ function buildReasons(
   return reasons;
 }
 
-function formatMoney(n: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 
 export interface RecommendOptions {
   tiers?: Tier[];

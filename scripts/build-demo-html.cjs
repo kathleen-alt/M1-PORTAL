@@ -106,6 +106,7 @@ const TABS = [
   ["analytics","📉 Analytics"],["portfolio","🐋 Portfolio"]
 ];
 const money=n=>new Intl.NumberFormat("en-CA",{style:"currency",currency:"CAD",maximumFractionDigits:0}).format(n);
+const band=n=>n<75000?"Under $75K":n<150000?"$75K–$150K":n<300000?"$150K–$300K":n<500000?"$300K–$500K":"$500K+";
 const compact=n=>new Intl.NumberFormat("en-CA",{style:"currency",currency:"CAD",notation:"compact",maximumFractionDigits:0}).format(n);
 const col=s=>s>=80?"var(--good)":s>=60?"var(--cold)":s>=40?"var(--warm)":"var(--hot)";
 const badge=c=>c==="Hot"?"b-hot":c==="Warm"?"b-warm":"b-cold";
@@ -121,7 +122,7 @@ function recCard(r,i){
     +'<div class="tag" style="margin-top:2px">'+esc(r.industry)+' · '+esc(r.city)+', '+esc(r.region)+' · Tier '+r.scores.tier+'</div></div>'+ring(r.scores.opportunity)+'</div>'
     +'<ul class="reasons">'+r.reasons.slice(0,4).map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>'
     +'<div class="bars">'+bar("Playground Fit",r.scores.playgroundFit)+bar("Budget Likelihood",r.scores.budgetLikelihood)+bar("Family Traffic",r.scores.familyTraffic)+bar("Decision-Maker Access",r.scores.decisionMakerAccess)+bar("Revenue Potential",r.scores.revenuePotential)+bar("Lead Qualification",r.leadScore)+'</div>'
-    +'<div class="kv"><div><div class="lbl">Est. Value</div><div class="v">'+money(r.estimatedValue.low)+'–'+money(r.estimatedValue.high)+'</div></div>'
+    +'<div class="kv"><div><div class="lbl">Est. Value (indicative)</div><div class="v" title="Every playground is custom-scoped.">'+money(r.estimatedValue.low)+'–'+money(r.estimatedValue.high)+'</div></div>'
     +'<div><div class="lbl">Close Probability</div><div class="v" style="color:'+col(r.closeProbability)+'">'+r.closeProbability+'%</div></div>'
     +'<div><div class="lbl">Decision Makers</div><div class="v">'+r.decisionMakers.length+'</div></div></div>'
     +(dm?'<div style="margin-top:10px">'+dm+'</div>':"")
@@ -145,7 +146,7 @@ function view_territory(){
       return '<div class="card" style="margin-bottom:12px"><div class="row"><div><span class="muted" style="font-weight:700">#'+(i+1)+'</span> <b>'+esc(r.name)+'</b> <span class="tag">'+esc(r.industry)+' · '+esc(r.city)+', '+esc(r.region)+'</span>'+(r.website?'<div class="tag"><a href="'+esc(r.website)+'" target="_blank">'+esc(r.website.replace(/^https?:\\/\\//,""))+'</a></div>':"")+'</div>'
       +'<div style="text-align:right"><div class="lbl muted">Opportunity</div><div style="color:'+col(r.scores.opportunity)+';font-weight:700">'+r.scores.opportunity+' · '+r.closeProbability+'% close</div></div></div>'
       +'<div class="kv" style="grid-template-columns:repeat(3,1fr)"><div><div class="lbl">Contact</div><div class="v">'+(dm?esc(dm.name):"—")+'</div><div class="tag">'+(dm?esc(dm.email||""):"")+' '+(dm?esc(dm.phone||r.phone||""):"")+'</div></div>'
-      +'<div><div class="lbl">Est. Project Size</div><div class="v">'+money(r.estimatedValue.low)+'–'+money(r.estimatedValue.high)+'</div></div>'
+      +'<div><div class="lbl">Est. Project Size (ind.)</div><div class="v">'+money(r.estimatedValue.low)+'–'+money(r.estimatedValue.high)+'</div></div>'
       +'<div><div class="lbl">Similar Customer</div><div class="v">'+(r.lookalikes[0]?esc(r.lookalikes[0].name):"—")+'</div></div></div>'
       +'<details><summary>AI first-touch email — '+esc(r.email.subject)+'</summary><pre>'+esc(r.email.body)+'</pre></details></div>';
     }).join("");
@@ -200,10 +201,10 @@ function view_portfolio(){
   const rows=DATA.portfolio;
   setTimeout(()=>{const inp=document.getElementById("psearch");if(inp)inp.oninput=()=>{const q=inp.value.toLowerCase();
     document.querySelectorAll("#ptable tbody tr").forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(q)?"":"none";});};},0);
-  return '<h1>Real Orca Coast Portfolio</h1><p class="sub">'+rows.length+' real completed projects (CA + US) — the reference set powering lookalike matching. Names, locations & websites are real; contract values are derived modeling estimates pending CRM figures.</p>'
+  return '<h1>Real Orca Coast Portfolio</h1><p class="sub">'+rows.length+' real completed projects (CA + US) — the reference set powering lookalike matching. Names, locations & websites are real. Value bands are indicative only: every playground is custom-scoped, so no fixed price is implied.</p>'
     +'<div style="margin-bottom:14px"><input id="psearch" type="search" placeholder="Filter by name, city, category…"></div>'
-    +'<div class="tablewrap"><table id="ptable"><thead><tr><th>Organization</th><th>Category</th><th>Location</th><th>Est. Value</th><th>Year</th><th>Website</th></tr></thead><tbody>'
-    +rows.map(p=>'<tr><td><b>'+esc(p.name.split(/[:–]/)[0])+'</b></td><td class="muted">'+esc(p.industry)+'</td><td class="muted">'+esc([p.city,p.region].filter(Boolean).join(", "))+' '+p.country+'</td><td>'+money(p.value)+'</td><td class="muted">'+p.year+'</td><td>'+(p.website?'<a href="https://'+esc(p.website.replace(/^https?:\\/\\//,""))+'" target="_blank">link</a>':"—")+'</td></tr>').join("")
+    +'<div class="tablewrap"><table id="ptable"><thead><tr><th>Organization</th><th>Category</th><th>Location</th><th>Value Band (ind.)</th><th>Website</th></tr></thead><tbody>'
+    +rows.map(p=>'<tr><td><b>'+esc(p.name.split(/[:–]/)[0])+'</b></td><td class="muted">'+esc(p.industry)+'</td><td class="muted">'+esc([p.city,p.region].filter(Boolean).join(", "))+' '+p.country+'</td><td class="muted">'+band(p.value)+'</td><td>'+(p.website?'<a href="https://'+esc(p.website.replace(/^https?:\\/\\//,""))+'" target="_blank">link</a>':"—")+'</td></tr>').join("")
     +'</tbody></table></div>';
 }
 

@@ -28,7 +28,7 @@ export default function ExecutiveDashboard() {
     <div>
       <PageHeader
         title="Who Should We Contact This Week?"
-        subtitle={`Week of ${weekOf}. The Prospect Recommendation Engine ranks every account by Opportunity Score, matches it to similar Orca Coast wins, and tells you why it made the list.`}
+        subtitle={`Week of ${weekOf}. The Prospect Recommendation Engine ranks every account by Opportunity Score, matches it to similar Orca Coast wins, and tells you why it made the list. Dollar figures are indicative ranges — every playground is custom-scoped.`}
       />
 
       <div className="mb-6 grid grid-cols-4 gap-4">

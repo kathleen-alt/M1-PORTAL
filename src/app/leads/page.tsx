@@ -89,7 +89,7 @@ export default async function LeadDiscovery({
               <th className="px-4 py-3">Location</th>
               <th className="px-4 py-3">Main Contact</th>
               <th className="px-4 py-3">Data Conf.</th>
-              <th className="px-4 py-3">Est. Value</th>
+              <th className="px-4 py-3">Est. Value (ind.)</th>
               <th className="px-4 py-3">Opp</th>
               <th className="px-4 py-3">Category</th>
             </tr>

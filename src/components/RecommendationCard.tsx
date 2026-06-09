@@ -53,8 +53,11 @@ export default function RecommendationCard({
 
       <div className="mt-4 grid grid-cols-3 gap-3 border-t border-orca-800 pt-4 text-sm">
         <div>
-          <div className="stat-label">Est. Value</div>
-          <div className="mt-0.5 font-semibold text-white">
+          <div className="stat-label">Est. Value (indicative)</div>
+          <div
+            className="mt-0.5 font-semibold text-white"
+            title="Indicative range only — every Orca Coast playground is custom-scoped."
+          >
             {moneyRange(estimatedValue.low, estimatedValue.high)}
           </div>
         </div>

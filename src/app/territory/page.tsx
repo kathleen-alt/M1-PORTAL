@@ -84,7 +84,7 @@ export default async function TerritoryManager() {
                 </div>
 
                 <div className="col-span-6 text-sm lg:col-span-2">
-                  <div className="stat-label">Est. Project Size</div>
+                  <div className="stat-label">Est. Project Size (indicative)</div>
                   <div className="mt-0.5 font-medium text-white">
                     {moneyRange(rec.estimatedValue.low, rec.estimatedValue.high)}
                   </div>
