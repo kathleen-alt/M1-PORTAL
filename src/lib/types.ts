@@ -165,6 +165,8 @@ export interface Lead {
   contacts: Contact[];
   signals: OrgSignals;
   socials?: Socials;
+  /** User-flagged priority lead ("my leads"). */
+  starred?: boolean;
   /** ISO timestamp of the last successful enrichment pass. */
   enrichedAt?: string;
   /** 0-100 confidence the lead record itself is real / well-formed. */

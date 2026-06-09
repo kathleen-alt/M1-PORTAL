@@ -351,11 +351,21 @@ function emailFor(lead,type,sim){const dm=lead.contacts.find(c=>c.isDecisionMake
 
 // ===================== State =====================
 const LS="orcaDemoState_v2";
-let STATE={leads:JSON.parse(JSON.stringify(DATA.leads)),enroll:{},sel:null,report:{}};
+let STATE={leads:JSON.parse(JSON.stringify(DATA.leads)),enroll:{},sel:null,report:{},starredOnly:false};
 try{const sv=localStorage.getItem(LS);if(sv){const o=JSON.parse(sv);if(o.leads)STATE.leads=o.leads;if(o.enroll)STATE.enroll=o.enroll;}}catch(e){}
 function save(){try{localStorage.setItem(LS,JSON.stringify({leads:STATE.leads,enroll:STATE.enroll}));}catch(e){}}
 function leadById(id){return STATE.leads.find(l=>l.id===id);}
-function resetDemo(){try{localStorage.removeItem(LS);}catch(e){}STATE.leads=JSON.parse(JSON.stringify(DATA.leads));STATE.enroll={};STATE.sel=null;STATE.report={};show("leads");}
+function resetDemo(){try{localStorage.removeItem(LS);}catch(e){}STATE.leads=JSON.parse(JSON.stringify(DATA.leads));STATE.enroll={};STATE.sel=null;STATE.report={};STATE.starredOnly=false;show("leads");}
+
+// Contacts CSV export (in-browser download)
+function csvEsc(v){const s=v==null?"":String(v);return /[",\\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function leadsCsv(leads){const H=["Organization","Contact","Role","Email","Phone","LinkedIn","Decision Maker","Industry","City","Region","Country","Website","Opportunity","Stage"];const rows=[H.join(",")];leads.forEach(l=>{const opp=scoreOf(l).opportunity;const ind=IM[l.industry].label;if(l.contacts.length===0){rows.push([l.name,"","","",l.phone||"","","",ind,l.address.city||"",l.address.region,l.address.country,l.website||"",opp,l.stage].map(csvEsc).join(","));}else{l.contacts.forEach(c=>{rows.push([l.name,c.name,c.role,c.email||"",c.phone||l.phone||"",c.linkedin||"",c.isDecisionMaker?"yes":"no",ind,l.address.city||"",l.address.region,l.address.country,l.website||"",opp,l.stage].map(csvEsc).join(","));});}});return rows.join("\\n");}
+function downloadCsv(name,text){const blob=new Blob([text],{type:"text/csv;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function exportAllContacts(){const ls=STATE.starredOnly?STATE.leads.filter(l=>l.starred):STATE.leads;downloadCsv(STATE.starredOnly?"orca-contacts-starred.csv":"orca-contacts.csv",leadsCsv(ls));}
+function exportLeadContacts(id){const l=leadById(id);if(l)downloadCsv("orca-contacts-"+id+".csv",leadsCsv([l]));}
+function toggleStar(id){const l=leadById(id);if(l)l.starred=!l.starred;save();show("leads");}
+function toggleStarredFilter(){STATE.starredOnly=!STATE.starredOnly;show("leads");}
+function starIcon(on){return '<span style="cursor:pointer;font-size:16px;color:'+(on?"#fbbf24":"#1c5375")+'">'+(on?"★":"☆")+'</span>';}
 
 // Actions (global so inline handlers resolve)
 function openLead(id){STATE.sel=id;show("leads");window.scrollTo(0,0);}
@@ -371,15 +381,19 @@ function fld(lbl,v){return '<div><div class="lbl">'+lbl+'</div><div class="v">'+
 
 function view_leads(){
   if(STATE.sel)return leadDetail(STATE.sel);
-  const rows=STATE.leads.map(l=>({l:l,sc:scoreOf(l),q:qualify(l)})).sort((a,b)=>b.sc.opportunity-a.sc.opportunity);
+  let rows=STATE.leads.map(l=>({l:l,sc:scoreOf(l),q:qualify(l)}));
+  if(STATE.starredOnly)rows=rows.filter(o=>o.l.starred);
+  rows.sort((a,b)=>b.sc.opportunity-a.sc.opportunity);
+  const starredCount=STATE.leads.filter(l=>l.starred).length;
   setTimeout(()=>{const f=document.getElementById("lf");if(f)f.oninput=()=>{const q=f.value.toLowerCase();document.querySelectorAll("#ltable tbody tr").forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().indexOf(q)>=0?"":"none";});};},0);
-  return '<div class="row"><h1>Leads Workspace</h1><button class="btn-ghost" onclick="resetDemo()">Reset demo data</button></div>'
-    +'<p class="sub">Every lead at a glance — click a row to open it, then ✨ enrich and ▶ push to a sequence. Live scores recompute as you go; changes are saved in your browser.</p>'
+  return '<div class="row"><h1>Leads Workspace</h1><div style="display:flex;gap:8px"><button class="btn-ghost" onclick="toggleStarredFilter()">'+(STATE.starredOnly?"Show all":("★ Starred only ("+starredCount+")"))+'</button><button class="btnG" onclick="exportAllContacts()">⬇ Export '+(STATE.starredOnly?"starred":"contacts")+' (CSV)</button><button class="btn-ghost" onclick="resetDemo()">Reset</button></div></div>'
+    +'<p class="sub">Every lead at a glance — ★ star your priority leads, click a row to open it, then ✨ enrich and ▶ push to a sequence. Filter and export starred. Changes save in your browser.</p>'
     +'<div style="margin-bottom:12px"><input id="lf" type="search" placeholder="Filter '+rows.length+' leads by name, city, category…"></div>'
-    +'<div class="tablewrap"><table id="ltable"><thead><tr><th>Organization</th><th>Tier</th><th>Location</th><th>Opp</th><th>Category</th><th>Stage</th><th>Contacts</th><th>Sequence</th></tr></thead><tbody>'
+    +'<div class="tablewrap"><table id="ltable"><thead><tr><th></th><th>Organization</th><th>Tier</th><th>Location</th><th>Opp</th><th>Category</th><th>Stage</th><th>Contacts</th><th>Sequence</th></tr></thead><tbody>'
     +rows.map(o=>{const l=o.l,sc=o.sc,q=o.q;const e=STATE.enroll[l.id];const we=l.contacts.filter(c=>c.email).length;
-      return '<tr style="cursor:pointer" onclick="openLead(\\''+l.id+'\\')"><td><b>'+esc(l.name)+'</b><div class="tag">'+esc(IM[l.industry].label)+'</div></td><td>T'+sc.tier+'</td><td class="muted">'+esc(l.address.city)+', '+esc(l.address.region)+'</td><td style="color:'+col(sc.opportunity)+';font-weight:700">'+sc.opportunity+'</td><td><span class="pill '+badge(q.category)+'">'+q.category+'</span></td><td class="muted">'+esc(l.stage)+'</td><td class="muted">'+we+'/'+l.contacts.length+' ✉</td><td class="muted">'+(e?(esc(e.campaignName.split(" ")[0])+" "+e.steps.filter(s=>s.status==="sent").length+"/"+e.steps.length):"—")+'</td></tr>';
-    }).join("")+'</tbody></table></div>';
+      return '<tr style="cursor:pointer" onclick="openLead(\\''+l.id+'\\')"><td style="text-align:center" onclick="event.stopPropagation();toggleStar(\\''+l.id+'\\')">'+starIcon(l.starred)+'</td><td><b>'+esc(l.name)+'</b><div class="tag">'+esc(IM[l.industry].label)+'</div></td><td>T'+sc.tier+'</td><td class="muted">'+esc(l.address.city)+', '+esc(l.address.region)+'</td><td style="color:'+col(sc.opportunity)+';font-weight:700">'+sc.opportunity+'</td><td><span class="pill '+badge(q.category)+'">'+q.category+'</span></td><td class="muted">'+esc(l.stage)+'</td><td class="muted">'+we+'/'+l.contacts.length+' ✉</td><td class="muted">'+(e?(esc(e.campaignName.split(" ")[0])+" "+e.steps.filter(s=>s.status==="sent").length+"/"+e.steps.length):"—")+'</td></tr>';
+    }).join("")+'</tbody></table></div>'
+    +(rows.length===0?'<div class="note">No starred leads yet — click a ☆ to star your priority leads.</div>':"");
 }
 
 function seqHtml(id,e){const icon={email:"✉️",phone:"📞",linkedin:"in",sms:"💬"};let h='<div class="card" style="margin-top:14px"><div class="row"><b>'+esc(e.campaignName)+' &nbsp;<span class="pill b-warm">'+e.status+'</span></b>'+(e.status==="active"?'<button class="btn-ghost" onclick="markReplied(\\''+id+'\\')">↩︎ Log reply → Responded</button>':'')+'</div><ol style="list-style:none;padding:0;margin:10px 0 0">';
@@ -390,7 +404,7 @@ function leadDetail(id){
   const l=leadById(id);if(!l)return '<div class="card">Not found</div>';
   const sc=scoreOf(l),q=qualify(l),ev=estVal(l.industry,l.signals),cp=closeProb(sc),rep=STATE.report[id],e=STATE.enroll[id];
   let h='<button class="btn-ghost" onclick="backLeads()">← All leads</button>';
-  h+='<div class="row" style="margin-top:12px"><div><h1 style="margin:0">'+esc(l.name)+'</h1><div class="tag">'+esc(IM[l.industry].label)+' · '+esc(l.address.city)+', '+esc(l.address.region)+' · Tier '+sc.tier+' · '+esc(l.stage)+'</div><div style="margin-top:4px;font-size:12px"><a target="_blank" href="'+maps({name:l.name,city:l.address.city,region:l.address.region,country:l.address.country,lat:l.address.lat,lng:l.address.lng})+'" style="color:var(--muted)">📍 Map</a>'+(l.website?(' &nbsp; <a target="_blank" href="'+esc(nurl(l.website))+'" style="color:var(--muted)">🔗 Website</a>'):"")+'</div></div>'+ring(sc.opportunity)+'</div>';
+  h+='<div class="row" style="margin-top:12px"><div><h1 style="margin:0"><span onclick="toggleStar(\\''+id+'\\')">'+starIcon(l.starred)+'</span> '+esc(l.name)+'</h1><div class="tag">'+esc(IM[l.industry].label)+' · '+esc(l.address.city)+', '+esc(l.address.region)+' · Tier '+sc.tier+' · '+esc(l.stage)+'</div><div style="margin-top:4px;font-size:12px"><a target="_blank" href="'+maps({name:l.name,city:l.address.city,region:l.address.region,country:l.address.country,lat:l.address.lat,lng:l.address.lng})+'" style="color:var(--muted)">📍 Map</a>'+(l.website?(' &nbsp; <a target="_blank" href="'+esc(nurl(l.website))+'" style="color:var(--muted)">🔗 Website</a>'):"")+'</div></div>'+ring(sc.opportunity)+'</div>';
   h+='<div class="card" style="margin-top:14px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btnG" onclick="doEnrich(\\''+id+'\\')">✨ Enrich data</button>';
   if(!e){h+='<select id="campSel">'+DATA.campaigns.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join("")+'</select><button class="btnG" onclick="doPush(\\''+id+'\\',document.getElementById(\\'campSel\\').value)">▶ Push to sequence</button>';}
   else{h+='<span class="tag">In sequence: '+esc(e.campaignName)+'</span>';}
@@ -400,7 +414,7 @@ function leadDetail(id){
   h+='<div class="card" style="margin-top:14px"><b>Opportunity Scores</b><div class="bars" style="margin-top:10px">'+bar("Playground Fit",sc.playgroundFit)+bar("Budget Likelihood",sc.budgetLikelihood)+bar("Family Traffic",sc.familyTraffic)+bar("Decision-Maker Access",sc.decisionMakerAccess)+bar("Revenue Potential",sc.revenuePotential)+bar("Lead Qualification",q.score)+'</div><div class="kv" style="margin-top:12px"><div><div class="lbl">Est. Value (ind.)</div><div class="v">'+money(ev.low)+'–'+money(ev.high)+'</div></div><div><div class="lbl">Close Prob.</div><div class="v" style="color:'+col(cp)+'">'+cp+'%</div></div><div><div class="lbl">Confidence</div><div class="v">'+l.dataConfidence+'</div></div></div></div>';
   if(e)h+=seqHtml(id,e);
   h+='<div class="card" style="margin-top:14px"><b>Firmographics</b><div class="kv" style="margin-top:10px">'+fld("Org Size",l.signals.orgSize?("~"+l.signals.orgSize):null)+fld("Facility",l.signals.facilitySqFt?("~"+l.signals.facilitySqFt.toLocaleString()+" sqft"):null)+fld("Locations",l.signals.locationCount||null)+fld("Child-Focused",l.signals.childFocused==null?null:(l.signals.childFocused?"Yes":"No"))+fld("Budget",l.signals.annualBudgetBand||null)+fld("Traffic",l.signals.weeklyFamilyTraffic?("~"+l.signals.weeklyFamilyTraffic.toLocaleString()):null)+'</div></div>';
-  h+='<div class="card" style="margin-top:14px"><b>Contacts</b>'+(l.contacts.length?l.contacts.map(c=>'<div style="margin-top:8px"><b>'+esc(c.name)+'</b> <span class="tag">'+esc(c.role)+(c.isDecisionMaker?" · decision maker":"")+'</span>'+(c.email?('<div class="tag">'+esc(c.email)+'</div>'):"")+(c.phone?('<div class="tag">'+esc(c.phone)+'</div>'):"")+'</div>').join(""):'<div class="note">No contacts yet — click ✨ Enrich to add role inboxes (info@/office@).</div>')+'</div>';
+  h+='<div class="card" style="margin-top:14px"><div class="row"><b>Contacts</b><button class="btn-ghost" onclick="exportLeadContacts(\\''+id+'\\')">⬇ CSV</button></div>'+(l.contacts.length?l.contacts.map(c=>'<div style="margin-top:8px"><b>'+esc(c.name)+'</b> <span class="tag">'+esc(c.role)+(c.isDecisionMaker?" · decision maker":"")+'</span>'+(c.email?('<div class="tag">'+esc(c.email)+'</div>'):"")+(c.phone?('<div class="tag">'+esc(c.phone)+'</div>'):"")+'</div>').join(""):'<div class="note">No contacts yet — click ✨ Enrich to add role inboxes (info@/office@).</div>')+'</div>';
   if(l.lookalikes&&l.lookalikes.length)h+='<div class="card" style="margin-top:14px"><b>Similar Orca Coast Projects</b>'+l.lookalikes.map(m=>'<div style="margin-top:6px"><span class="hl">'+m.similarity+'%</span> '+esc(m.name)+'<div class="tag">'+esc(m.reasons.join(" · "))+'</div></div>').join("")+'</div>';
   return h;
 }

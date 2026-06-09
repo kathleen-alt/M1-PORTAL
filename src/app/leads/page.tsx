@@ -5,6 +5,7 @@ import { ALL_INDUSTRIES, industryLabel } from "@/lib/taxonomy";
 import type { Industry } from "@/lib/types";
 import { PageHeader } from "@/components/ui";
 import SourcingPanel from "@/components/SourcingPanel";
+import StarButton from "@/components/StarButton";
 import { categoryBadge, mapsUrl, moneyRange, scoreColor } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function LeadDiscovery({
   searchParams,
 }: {
-  searchParams: { industry?: string; city?: string; region?: string; postalCode?: string };
+  searchParams: { industry?: string; city?: string; region?: string; postalCode?: string; starred?: string };
 }) {
   const result = await discoverLeads({
     industry: searchParams.industry as Industry | undefined,
@@ -21,12 +22,27 @@ export default async function LeadDiscovery({
     postalCode: searchParams.postalCode,
   });
   const projects = getProjects();
+  const starredOnly = searchParams.starred === "1";
+  const displayed = starredOnly ? result.leads.filter((l) => l.starred) : result.leads;
 
   return (
     <div>
       <PageHeader
         title="Lead Discovery Engine"
         subtitle="Source the right clients three ways: import an existing list, pull real organizations live from OpenStreetMap, or search the current pipeline. Everything is auto-classified into the prospect taxonomy and scored."
+        action={
+          <div className="flex gap-2">
+            <a href={starredOnly ? "/leads" : "/leads?starred=1"} className="btn-ghost">
+              {starredOnly ? "Show all" : "★ Starred only"}
+            </a>
+            <a href="/api/contacts/export" className="btn-ghost" download>
+              ⬇ Export all
+            </a>
+            <a href="/api/contacts/export?starred=1" className="btn-ghost" download>
+              ⬇ Export starred
+            </a>
+          </div>
+        }
       />
 
       <SourcingPanel />
@@ -81,13 +97,14 @@ export default async function LeadDiscovery({
       </form>
 
       <p className="mb-4 text-xs text-orca-400">
-        {result.leads.length} result(s) · source: {result.source} · {result.note}
+        {displayed.length} result(s){starredOnly ? " (starred)" : ""} · source: {result.source} · {result.note}
       </p>
 
       <div className="overflow-hidden rounded-xl border border-orca-800">
         <table className="w-full text-sm">
           <thead className="bg-orca-900/80 text-left text-xs uppercase text-orca-300">
             <tr>
+              <th className="px-2 py-3"></th>
               <th className="px-4 py-3">Organization</th>
               <th className="px-4 py-3">Industry</th>
               <th className="px-4 py-3">Location</th>
@@ -99,11 +116,14 @@ export default async function LeadDiscovery({
             </tr>
           </thead>
           <tbody>
-            {result.leads.map((lead) => {
+            {displayed.map((lead) => {
               const rec = recommendLead(lead, projects);
               const dm = lead.contacts.find((c) => c.isDecisionMaker) ?? lead.contacts[0];
               return (
                 <tr key={lead.id} className="border-t border-orca-800 hover:bg-orca-900/40">
+                  <td className="px-2 py-3 text-center">
+                    <StarButton leadId={lead.id} initial={lead.starred} />
+                  </td>
                   <td className="px-4 py-3">
                     <a href={`/leads/${lead.id}`} className="font-medium text-white hover:text-kelp-300 hover:underline">
                       {lead.name}

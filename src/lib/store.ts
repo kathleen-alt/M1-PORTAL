@@ -62,6 +62,13 @@ export function addLead(lead: Lead): Lead {
   return lead;
 }
 
+/** Toggle (or set) the user's priority star on a lead. */
+export function setStar(id: string, starred?: boolean): Lead | undefined {
+  const lead = getLead(id);
+  if (lead) lead.starred = starred ?? !lead.starred;
+  return lead;
+}
+
 /**
  * Bulk add with dedupe against existing leads. Returns how many were added vs
  * skipped as duplicates — used by import and live sourcing.

@@ -7,6 +7,7 @@ import { PageHeader, ScoreBar, ScoreRing } from "@/components/ui";
 import ActivityPanel from "@/components/ActivityPanel";
 import OutreachPanel from "@/components/OutreachPanel";
 import EnrichmentPanel from "@/components/EnrichmentPanel";
+import StarButton from "@/components/StarButton";
 import { categoryBadge, locationLabel, mapsUrl, moneyRange, normalizeUrl, scoreColor } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,12 @@ export default function LeadDetail({ params }: { params: { id: string } }) {
       <PageHeader
         title={lead.name}
         subtitle={`${industryLabel(lead.industry)} · ${lead.address.city ? lead.address.city + ", " : ""}${lead.address.region}, ${lead.address.country} · Tier ${rec.scores.tier}`}
-        action={<span className={`pill ${categoryBadge(rec.category)}`}>{rec.category}</span>}
+        action={
+          <div className="flex items-center gap-3">
+            <StarButton leadId={lead.id} initial={lead.starred} />
+            <span className={`pill ${categoryBadge(rec.category)}`}>{rec.category}</span>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-3 gap-4">
@@ -118,7 +124,12 @@ export default function LeadDetail({ params }: { params: { id: string } }) {
 
           {/* Contacts */}
           <div className="card">
-            <div className="section-title mb-3">Contacts</div>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="section-title">Contacts</div>
+              <a href={`/api/contacts/export?leadId=${lead.id}`} className="btn-ghost text-xs" download>
+                ⬇ CSV
+              </a>
+            </div>
             {lead.contacts.length === 0 && (
               <p className="text-sm text-orca-400">
                 No contacts yet. Enrichment (Apollo/Hunter) or manual entry fills these.
