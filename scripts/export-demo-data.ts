@@ -10,6 +10,8 @@ import { computeAnalytics } from "../src/lib/analytics";
 import { generateEmail } from "../src/lib/ai/email";
 import { CAMPAIGN_TEMPLATES } from "../src/lib/data/campaigns";
 import { industryLabel, ALL_INDUSTRIES, industryTier } from "../src/lib/taxonomy";
+import { INDUSTRY_META } from "../src/lib/taxonomy";
+import { findLookalikes } from "../src/lib/prospecting/lookalike";
 
 function focusFor(industry: string): string[] {
   if (industry.includes("church")) return CAMPAIGN_TEMPLATES[1].focusPoints;
@@ -69,6 +71,67 @@ async function main() {
   const taxonomy: Record<string, { label: string; tier: number }> = {};
   for (const ind of ALL_INDUSTRIES) taxonomy[ind] = { label: industryLabel(ind), tier: industryTier(ind) };
 
+  // Industry metadata + full lead records for the interactive in-browser app.
+  const industryMeta: Record<string, any> = {};
+  for (const ind of ALL_INDUSTRIES) {
+    const m = INDUSTRY_META[ind];
+    industryMeta[ind] = { label: m.label, tier: m.tier, baseLow: m.baseValue.low, baseHigh: m.baseValue.high, childFocused: m.childFocused };
+  }
+
+  // A few illustrative "freshly sourced" raw prospects (empty signals / no
+  // contacts) so the interactive demo can show what Enrich does to a new lead.
+  const rawProspects = [
+    { name: "Northwood Community Centre", industry: "community_center", city: "Surrey", region: "BC", country: "CA" as const, website: "northwoodcc.ca" },
+    { name: "Cornerstone Family Church", industry: "large_church", city: "Mississauga", region: "ON", country: "CA" as const, website: "cornerstonefamily.ca" },
+    { name: "Bright Horizons Childcare", industry: "daycare", city: "Ottawa", region: "ON", country: "CA" as const, website: "brighthorizonsott.ca" },
+    { name: "Lakeview Family YMCA", industry: "ymca", city: "Hamilton", region: "ON", country: "CA" as const, website: "lakeviewymca.ca" },
+  ].map((r, i) => {
+    const lead = {
+      id: `src_${i}`,
+      name: r.name,
+      industry: r.industry as any,
+      website: r.website,
+      phone: undefined,
+      address: { city: r.city, region: r.region, country: r.country },
+      contacts: [],
+      signals: {},
+      dataConfidence: 55,
+      source: "google_maps" as const,
+      stage: "New Lead" as const,
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      ...lead,
+      socials: {},
+      lookalikes: findLookalikes(lead as any, projects, 3).map((m) => ({
+        name: m.project.name,
+        similarity: m.similarity,
+        reasons: m.reasons,
+      })),
+    };
+  });
+
+  const fullLeads = leads.map((l) => ({
+    id: l.id,
+    name: l.name,
+    industry: l.industry,
+    website: l.website,
+    phone: l.phone,
+    address: l.address,
+    contacts: l.contacts,
+    signals: l.signals,
+    socials: l.socials ?? {},
+    dataConfidence: l.dataConfidence,
+    source: l.source,
+    stage: l.stage,
+    lookalikes: findLookalikes(l, projects, 3).map((m) => ({
+      name: m.project.name,
+      similarity: m.similarity,
+      reasons: m.reasons,
+    })),
+  }));
+  fullLeads.push(...(rawProspects as any));
+
   // A sample sequence enrollment for the top recommendation: cadence steps with
   // due dates and pre-generated emails — demonstrates "move into a sequence".
   const top = recs[0];
@@ -106,6 +169,8 @@ async function main() {
   const data = {
     generatedAt: new Date().toISOString(),
     taxonomy,
+    industryMeta,
+    leads: fullLeads,
     sampleSequence,
     analytics: computeAnalytics(leads),
     recommendations: recsWithEmail,

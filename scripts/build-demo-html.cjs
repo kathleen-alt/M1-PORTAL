@@ -66,6 +66,12 @@ const html = `<!doctype html>
   td{padding:10px;border-top:1px solid #143a54;vertical-align:top}
   .tablewrap{border:1px solid #143a54;border-radius:13px;overflow:hidden}
   input[type=search]{background:#06121c;border:1px solid #143a54;color:#fff;border-radius:9px;padding:9px 12px;width:280px}
+  select{background:#06121c;border:1px solid #143a54;color:#fff;border-radius:9px;padding:8px 10px;font-size:13px}
+  .btnG{background:var(--green);color:#fff;border:0;border-radius:9px;padding:8px 14px;font-weight:600;cursor:pointer;font-size:13px}
+  .btnG:hover{background:var(--green2)}
+  .btn-ghost{background:none;border:1px solid #143a54;color:#aed8ee;border-radius:9px;padding:7px 12px;cursor:pointer;font-size:13px}
+  .btn-ghost:hover{background:#0f2c40}
+  #ltable tbody tr:hover{background:rgba(20,58,84,.35)}
   .cols{display:flex;gap:12px;overflow:auto;padding-bottom:8px}
   .col{flex:0 0 220px;background:rgba(10,31,46,.4);border:1px solid #143a54;border-radius:13px}
   .col h4{margin:0;padding:10px;border-bottom:1px solid #143a54;font-size:13px;display:flex;justify-content:space-between}
@@ -100,6 +106,7 @@ const html = `<!doctype html>
 <script>
 const DATA = ${JSON.stringify(data)};
 const TABS = [
+  ["leads","🗂️ Leads Workspace"],
   ["who","🎯 Who to Contact"],["source","🧲 Source Leads"],
   ["territory","🗺️ Territory Manager"],
   ["pipeline","📊 CRM Pipeline"],["campaigns","✉️ Campaigns"],
@@ -309,11 +316,100 @@ function view_source(){
     +'<div id="clsOut" style="margin-top:14px"></div></div>';
 }
 
-const VIEWS={who:view_who,source:view_source,territory:view_territory,pipeline:view_pipeline,campaigns:view_campaigns,market:view_market,heatmap:view_heatmap,analytics:view_analytics,portfolio:view_portfolio};
+// ===================== Interactive engine (ported) =====================
+const IM=DATA.industryMeta;
+const clampS=(n)=>Math.max(0,Math.min(100,n));
+const TBF={1:80,2:68,3:60,4:58,5:48,6:40};
+function fitScore(ind,s){const m=IM[ind];let sc=TBF[m.tier]||40;sc+=(s.childFocused!=null?s.childFocused:m.childFocused)?8:-6;if(s.facilitySqFt){if(s.facilitySqFt>=40000)sc+=8;else if(s.facilitySqFt>=15000)sc+=4;else if(s.facilitySqFt<5000)sc-=6;}if(s.locationCount&&s.locationCount>1)sc+=Math.min(8,s.locationCount*2);if(s.hasExistingPlayArea)sc-=4;return Math.round(clampS(sc));}
+function budgetScore(s){let sc=50;switch(s.annualBudgetBand){case"over_10m":sc=92;break;case"2m_10m":sc=80;break;case"500k_2m":sc=62;break;case"under_500k":sc=38;break;default:if(s.orgSize){if(s.orgSize>=200)sc=78;else if(s.orgSize>=50)sc=64;else if(s.orgSize>=15)sc=52;else sc=42;}}if(s.growthIndicators&&s.growthIndicators.length)sc+=Math.min(12,s.growthIndicators.length*5);return Math.round(clampS(sc));}
+function trafficScore(ind,s){const m=IM[ind];let sc=(s.childFocused!=null?s.childFocused:m.childFocused)?60:35;if(s.weeklyFamilyTraffic){if(s.weeklyFamilyTraffic>=3000)sc=95;else if(s.weeklyFamilyTraffic>=1000)sc=82;else if(s.weeklyFamilyTraffic>=300)sc=68;else sc=50;}if(s.locationCount&&s.locationCount>1)sc+=5;return Math.round(clampS(sc));}
+function dmScore(cts){const dm=cts.filter(c=>c.isDecisionMaker);if(dm.length===0)return cts.length===0?15:35;const per=dm.map(c=>{let v=c.confidence*0.5;if(c.email)v+=25;if(c.phone)v+=15;if(c.linkedin)v+=10;return clampS(v);});const avg=per.reduce((a,b)=>a+b,0)/per.length;return Math.round(clampS(avg+Math.min(10,(dm.length-1)*5)));}
+function estVal(ind,s){const m=IM[ind];let mult=1;if(s.facilitySqFt){if(s.facilitySqFt>=40000)mult*=1.3;else if(s.facilitySqFt>=15000)mult*=1.1;else if(s.facilitySqFt<5000)mult*=0.8;}if(s.locationCount&&s.locationCount>1)mult*=1+Math.min(1,(s.locationCount-1)*0.15);const r=n=>Math.round(n*mult/1000)*1000;return{low:r(m.baseLow),high:r(m.baseHigh)};}
+function revScore(ind,s){const h=estVal(ind,s).high;return Math.round(clampS(40+((h-50000)/650000)*58));}
+function scoreOf(l){const pf=fitScore(l.industry,l.signals),bl=budgetScore(l.signals),ft=trafficScore(l.industry,l.signals),dm=dmScore(l.contacts),rp=revScore(l.industry,l.signals);return{playgroundFit:pf,budgetLikelihood:bl,familyTraffic:ft,decisionMakerAccess:dm,revenuePotential:rp,opportunity:Math.round(pf*0.3+bl*0.2+ft*0.2+dm*0.15+rp*0.15),tier:IM[l.industry].tier};}
+function qualify(l){const s=l.signals;let sc=30;if(s.orgSize)sc+=s.orgSize>=100?12:s.orgSize>=30?8:4;if(s.facilitySqFt)sc+=s.facilitySqFt>=20000?12:s.facilitySqFt>=8000?7:3;if(s.locationCount&&s.locationCount>1)sc+=Math.min(10,s.locationCount*3);if(s.childFocused!=null?s.childFocused:IM[l.industry].childFocused)sc+=12;if(s.hasExistingPlayArea)sc+=6;sc+=budgetScore(s)*0.15;if(s.growthIndicators&&s.growthIndicators.length)sc+=Math.min(12,s.growthIndicators.length*4);sc=Math.round(clampS(sc));return{score:sc,category:sc>=75?"Hot":sc>=50?"Warm":"Cold"};}
+function closeProb(sc){const tf={1:1,2:.9,3:.82,4:.8,5:.7,6:.62}[sc.tier]||.6;return Math.round(clampS((sc.opportunity*.6+sc.decisionMakerAccess*.4)*tf));}
+const TBL={1:{orgSize:80,facilitySqFt:30000,annualBudgetBand:"2m_10m",weeklyFamilyTraffic:2000},2:{orgSize:25,facilitySqFt:7000,annualBudgetBand:"500k_2m",weeklyFamilyTraffic:500},3:{orgSize:45,facilitySqFt:25000,annualBudgetBand:"2m_10m",weeklyFamilyTraffic:1500},4:{orgSize:50,facilitySqFt:35000,annualBudgetBand:"2m_10m",weeklyFamilyTraffic:3000},5:{orgSize:120,facilitySqFt:20000,annualBudgetBand:"2m_10m",weeklyFamilyTraffic:800},6:{orgSize:40,facilitySqFt:15000,annualBudgetBand:"500k_2m",weeklyFamilyTraffic:700}};
+function enrichSignals(l){const m=IM[l.industry];const b=TBL[m.tier]||TBL[6];const s=l.signals;const notes=[];const lo=l.name.toLowerCase();
+ if(s.childFocused==null){s.childFocused=m.childFocused;notes.push("child-focused: "+(m.childFocused?"yes":"no"));}
+ if(s.facilitySqFt==null){let q=b.facilitySqFt;if(/(flagship|regional|metro|greater|district|county|central)/.test(lo))q=Math.round(q*1.3);s.facilitySqFt=q;notes.push("facility ~"+q.toLocaleString()+" sqft");}
+ if(s.orgSize==null){s.orgSize=b.orgSize;notes.push("org size ~"+b.orgSize);}
+ if(s.annualBudgetBand==null){s.annualBudgetBand=b.annualBudgetBand;notes.push("budget "+b.annualBudgetBand);}
+ if(s.weeklyFamilyTraffic==null){s.weeklyFamilyTraffic=b.weeklyFamilyTraffic;notes.push("traffic ~"+b.weeklyFamilyTraffic.toLocaleString());}
+ if(s.locationCount==null&&/(multi-?campus|multi campus|locations|chain)/.test(lo)){s.locationCount=3;notes.push("multi-location x3");}
+ return notes;}
+function dom2(w){if(!w)return null;let d=w.toLowerCase().replace(/^https?:\\/\\//,"").replace(/^www\\./,"").split(/[\\/?#]/)[0];return d.indexOf(".")>=0?d:null;}
+function guess(name,d){const c=name.replace(/^(dr\\.?|pastor|mr\\.?|ms\\.?|mrs\\.?|rev\\.?)\\s+/i,"").trim().split(/\\s+/);const f=(c[0]||"").toLowerCase().replace(/[^a-z]/g,"");const l=(c.length>1?c[c.length-1]:"").toLowerCase().replace(/[^a-z]/g,"");if(!f)return null;return l?f+"."+l+"@"+d:f+"@"+d;}
+function findEmails(lead){const d=dom2(lead.website);if(!d)return 0;let n=0;lead.contacts.forEach(c=>{if(!c.email){const g=guess(c.name,d);if(g){c.email=g;c.confidence=Math.round((c.confidence+55)/2);n++;}}});if(lead.contacts.length===0){lead.contacts.push({id:"role_i",name:"General Inbox",role:"Other",email:"info@"+d,confidence:45,isDecisionMaker:false});lead.contacts.push({id:"role_o",name:"Office",role:"Other",email:"office@"+d,confidence:40,isDecisionMaker:false});n+=2;}return n;}
+function firstName(full){return full.replace(/^(Dr\\.|Pastor|Mr\\.|Ms\\.|Mrs\\.|Rev\\.)\\s+/i,"").split(" ")[0];}
+function emailFor(lead,type,sim){const dm=lead.contacts.find(c=>c.isDecisionMaker)||lead.contacts[0];const isRole=dm?/inbox|^office$|general/i.test(dm.name):false;const greet=(dm&&!isRole)?("Hi "+firstName(dm.name)+","):"Hello,";const lab=IM[lead.industry].label.split(" ").map(w=>/^[A-Z]{2,4}$/.test(w)?w:w.toLowerCase()).join(" ");const ref=sim||"comparable organizations across Canada and the U.S.";const city=lead.address.city;const cta="Would you be open to a quick 15-minute call next week?";
+ if(type==="first_touch")return{subject:"A play space families at "+lead.name+" would love",body:greet+"\\n\\nI lead business development at Orca Coast Playgrounds — we design and install indoor playgrounds for "+lab+"s like "+lead.name+". We recently completed a project for "+ref+", and the response from families has been remarkable.\\n\\nGiven everything happening at "+lead.name+" in "+city+", I think there's a real opportunity to create a destination play experience.\\n\\n"+cta};
+ if(type==="follow_up")return{subject:"Following up — indoor play at "+lead.name,body:greet+"\\n\\nCircling back on my note about an indoor playground for "+lead.name+". Organizations we work with typically see higher family visit frequency within the first season.\\n\\n"+cta};
+ if(type==="case_study")return{subject:"Case study: "+(sim||"a project like yours"),body:greet+"\\n\\nThought "+(sim||"this")+" might resonate — a similar installation became a centrepiece for the families they serve. I'd love to share the full case study for "+lead.name+".\\n\\n"+cta};
+ if(type==="final_check_in")return{subject:"Should I close the loop?",body:greet+"\\n\\nI haven't heard back, so I'll assume the timing isn't right for an indoor playground at "+lead.name+" just yet. I'll leave the door open — whenever families and facilities are on the agenda again, I'd be glad to help."};
+ return{subject:"How play space drives family engagement",body:greet+"\\n\\nA quick insight: a well-designed indoor playground is one of the highest-ROI family amenities you can add — more dwell time, repeat visits, and word-of-mouth.\\n\\nGlad to be a resource whenever the timing is right."};}
+
+// ===================== State =====================
+const LS="orcaDemoState_v2";
+let STATE={leads:JSON.parse(JSON.stringify(DATA.leads)),enroll:{},sel:null,report:{}};
+try{const sv=localStorage.getItem(LS);if(sv){const o=JSON.parse(sv);if(o.leads)STATE.leads=o.leads;if(o.enroll)STATE.enroll=o.enroll;}}catch(e){}
+function save(){try{localStorage.setItem(LS,JSON.stringify({leads:STATE.leads,enroll:STATE.enroll}));}catch(e){}}
+function leadById(id){return STATE.leads.find(l=>l.id===id);}
+function resetDemo(){try{localStorage.removeItem(LS);}catch(e){}STATE.leads=JSON.parse(JSON.stringify(DATA.leads));STATE.enroll={};STATE.sel=null;STATE.report={};show("leads");}
+
+// Actions (global so inline handlers resolve)
+function openLead(id){STATE.sel=id;show("leads");window.scrollTo(0,0);}
+function backLeads(){STATE.sel=null;show("leads");}
+function doEnrich(id){const l=leadById(id);const before=scoreOf(l).opportunity;const notes=enrichSignals(l);const em=findEmails(l);l.dataConfidence=Math.min(95,l.dataConfidence+12);l.enrichedAt=new Date().toISOString();STATE.report[id]={notes:notes,emails:em,before:before,after:scoreOf(l).opportunity};save();show("leads");}
+function doPush(id,campId){const l=leadById(id);const camp=DATA.campaigns.find(c=>c.id===campId)||DATA.campaigns[3];const start=Date.now();const sim=(l.lookalikes&&l.lookalikes[0])?l.lookalikes[0].name:null;const toC=l.contacts.find(c=>c.isDecisionMaker&&c.email)||l.contacts.find(c=>c.email);const toEmail=toC?toC.email:null;const steps=camp.cadence.map(st=>{let em=null;if(st.channel==="email"&&st.emailType)em=emailFor(l,st.emailType,sim);return{day:st.day,channel:st.channel,label:st.label,dueAt:new Date(start+st.day*86400000).toISOString(),subject:em?em.subject:null,body:em?em.body:null,status:"pending",toEmail:st.channel==="email"?toEmail:null};});STATE.enroll[id]={campaignName:camp.name,status:"active",steps:steps,idx:0};if(l.stage==="New Lead")l.stage="Contacted";save();show("leads");}
+function markStep(id){const e=STATE.enroll[id];if(!e)return;const st=e.steps[e.idx];if(st)st.status="sent";e.idx++;if(e.idx>=e.steps.length)e.status="completed";save();show("leads");}
+function markReplied(id){const e=STATE.enroll[id];if(e&&e.status==="active")e.status="paused";const l=leadById(id);if(l.stage==="New Lead"||l.stage==="Contacted")l.stage="Responded";save();show("leads");}
+
+// ===================== Workspace views =====================
+function fmtD(iso){return new Date(iso).toLocaleDateString("en-CA",{month:"short",day:"numeric"});}
+function fld(lbl,v){return '<div><div class="lbl">'+lbl+'</div><div class="v">'+(v!=null&&v!==""?v:'<span style="color:var(--muted)">—</span>')+'</div></div>';}
+
+function view_leads(){
+  if(STATE.sel)return leadDetail(STATE.sel);
+  const rows=STATE.leads.map(l=>({l:l,sc:scoreOf(l),q:qualify(l)})).sort((a,b)=>b.sc.opportunity-a.sc.opportunity);
+  setTimeout(()=>{const f=document.getElementById("lf");if(f)f.oninput=()=>{const q=f.value.toLowerCase();document.querySelectorAll("#ltable tbody tr").forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().indexOf(q)>=0?"":"none";});};},0);
+  return '<div class="row"><h1>Leads Workspace</h1><button class="btn-ghost" onclick="resetDemo()">Reset demo data</button></div>'
+    +'<p class="sub">Every lead at a glance — click a row to open it, then ✨ enrich and ▶ push to a sequence. Live scores recompute as you go; changes are saved in your browser.</p>'
+    +'<div style="margin-bottom:12px"><input id="lf" type="search" placeholder="Filter '+rows.length+' leads by name, city, category…"></div>'
+    +'<div class="tablewrap"><table id="ltable"><thead><tr><th>Organization</th><th>Tier</th><th>Location</th><th>Opp</th><th>Category</th><th>Stage</th><th>Contacts</th><th>Sequence</th></tr></thead><tbody>'
+    +rows.map(o=>{const l=o.l,sc=o.sc,q=o.q;const e=STATE.enroll[l.id];const we=l.contacts.filter(c=>c.email).length;
+      return '<tr style="cursor:pointer" onclick="openLead(\\''+l.id+'\\')"><td><b>'+esc(l.name)+'</b><div class="tag">'+esc(IM[l.industry].label)+'</div></td><td>T'+sc.tier+'</td><td class="muted">'+esc(l.address.city)+', '+esc(l.address.region)+'</td><td style="color:'+col(sc.opportunity)+';font-weight:700">'+sc.opportunity+'</td><td><span class="pill '+badge(q.category)+'">'+q.category+'</span></td><td class="muted">'+esc(l.stage)+'</td><td class="muted">'+we+'/'+l.contacts.length+' ✉</td><td class="muted">'+(e?(esc(e.campaignName.split(" ")[0])+" "+e.steps.filter(s=>s.status==="sent").length+"/"+e.steps.length):"—")+'</td></tr>';
+    }).join("")+'</tbody></table></div>';
+}
+
+function seqHtml(id,e){const icon={email:"✉️",phone:"📞",linkedin:"in",sms:"💬"};let h='<div class="card" style="margin-top:14px"><div class="row"><b>'+esc(e.campaignName)+' &nbsp;<span class="pill b-warm">'+e.status+'</span></b>'+(e.status==="active"?'<button class="btn-ghost" onclick="markReplied(\\''+id+'\\')">↩︎ Log reply → Responded</button>':'')+'</div><ol style="list-style:none;padding:0;margin:10px 0 0">';
+ h+=e.steps.map((s,i)=>{const cur=i===e.idx&&e.status==="active";return '<li style="border:1px solid '+(cur?"var(--green)":"#143a54")+';border-radius:9px;padding:10px;margin:6px 0;background:rgba(6,18,28,.4)"><div class="row"><span><span class="muted">Day '+s.day+'</span> '+(icon[s.channel]||"")+' '+esc(s.label)+' <span class="tag">· '+(s.status==="pending"?("due "+fmtD(s.dueAt)):s.status)+'</span></span>'+(cur?'<button class="btnG" onclick="markStep(\\''+id+'\\')">Mark sent</button>':'')+'</div>'+(s.subject?'<details style="margin-top:6px"><summary class="tag">'+(s.toEmail?("To "+esc(s.toEmail)+" — "):"")+'Subject: '+esc(s.subject)+'</summary><pre style="white-space:pre-wrap;font-family:inherit;color:var(--ink);margin:6px 0 0">'+esc(s.body)+'</pre></details>':'')+'</li>';}).join("");
+ return h+'</ol></div>';}
+
+function leadDetail(id){
+  const l=leadById(id);if(!l)return '<div class="card">Not found</div>';
+  const sc=scoreOf(l),q=qualify(l),ev=estVal(l.industry,l.signals),cp=closeProb(sc),rep=STATE.report[id],e=STATE.enroll[id];
+  let h='<button class="btn-ghost" onclick="backLeads()">← All leads</button>';
+  h+='<div class="row" style="margin-top:12px"><div><h1 style="margin:0">'+esc(l.name)+'</h1><div class="tag">'+esc(IM[l.industry].label)+' · '+esc(l.address.city)+', '+esc(l.address.region)+' · Tier '+sc.tier+' · '+esc(l.stage)+'</div><div style="margin-top:4px;font-size:12px"><a target="_blank" href="'+maps({name:l.name,city:l.address.city,region:l.address.region,country:l.address.country,lat:l.address.lat,lng:l.address.lng})+'" style="color:var(--muted)">📍 Map</a>'+(l.website?(' &nbsp; <a target="_blank" href="'+esc(nurl(l.website))+'" style="color:var(--muted)">🔗 Website</a>'):"")+'</div></div>'+ring(sc.opportunity)+'</div>';
+  h+='<div class="card" style="margin-top:14px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btnG" onclick="doEnrich(\\''+id+'\\')">✨ Enrich data</button>';
+  if(!e){h+='<select id="campSel">'+DATA.campaigns.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join("")+'</select><button class="btnG" onclick="doPush(\\''+id+'\\',document.getElementById(\\'campSel\\').value)">▶ Push to sequence</button>';}
+  else{h+='<span class="tag">In sequence: '+esc(e.campaignName)+'</span>';}
+  h+='</div>';
+  if(rep){h+='<div class="note" style="margin-top:10px;color:var(--good)">Enriched: +'+rep.emails+' email(s) · Opportunity '+rep.before+' → '+rep.after+(rep.notes.length?(' · '+esc(rep.notes.join(" · "))):"")+'</div>';}
+  h+='</div>';
+  h+='<div class="card" style="margin-top:14px"><b>Opportunity Scores</b><div class="bars" style="margin-top:10px">'+bar("Playground Fit",sc.playgroundFit)+bar("Budget Likelihood",sc.budgetLikelihood)+bar("Family Traffic",sc.familyTraffic)+bar("Decision-Maker Access",sc.decisionMakerAccess)+bar("Revenue Potential",sc.revenuePotential)+bar("Lead Qualification",q.score)+'</div><div class="kv" style="margin-top:12px"><div><div class="lbl">Est. Value (ind.)</div><div class="v">'+money(ev.low)+'–'+money(ev.high)+'</div></div><div><div class="lbl">Close Prob.</div><div class="v" style="color:'+col(cp)+'">'+cp+'%</div></div><div><div class="lbl">Confidence</div><div class="v">'+l.dataConfidence+'</div></div></div></div>';
+  if(e)h+=seqHtml(id,e);
+  h+='<div class="card" style="margin-top:14px"><b>Firmographics</b><div class="kv" style="margin-top:10px">'+fld("Org Size",l.signals.orgSize?("~"+l.signals.orgSize):null)+fld("Facility",l.signals.facilitySqFt?("~"+l.signals.facilitySqFt.toLocaleString()+" sqft"):null)+fld("Locations",l.signals.locationCount||null)+fld("Child-Focused",l.signals.childFocused==null?null:(l.signals.childFocused?"Yes":"No"))+fld("Budget",l.signals.annualBudgetBand||null)+fld("Traffic",l.signals.weeklyFamilyTraffic?("~"+l.signals.weeklyFamilyTraffic.toLocaleString()):null)+'</div></div>';
+  h+='<div class="card" style="margin-top:14px"><b>Contacts</b>'+(l.contacts.length?l.contacts.map(c=>'<div style="margin-top:8px"><b>'+esc(c.name)+'</b> <span class="tag">'+esc(c.role)+(c.isDecisionMaker?" · decision maker":"")+'</span>'+(c.email?('<div class="tag">'+esc(c.email)+'</div>'):"")+(c.phone?('<div class="tag">'+esc(c.phone)+'</div>'):"")+'</div>').join(""):'<div class="note">No contacts yet — click ✨ Enrich to add role inboxes (info@/office@).</div>')+'</div>';
+  if(l.lookalikes&&l.lookalikes.length)h+='<div class="card" style="margin-top:14px"><b>Similar Orca Coast Projects</b>'+l.lookalikes.map(m=>'<div style="margin-top:6px"><span class="hl">'+m.similarity+'%</span> '+esc(m.name)+'<div class="tag">'+esc(m.reasons.join(" · "))+'</div></div>').join("")+'</div>';
+  return h;
+}
+
+const VIEWS={leads:view_leads,who:view_who,source:view_source,territory:view_territory,pipeline:view_pipeline,campaigns:view_campaigns,market:view_market,heatmap:view_heatmap,analytics:view_analytics,portfolio:view_portfolio};
 function show(id){document.getElementById("view").innerHTML=VIEWS[id]();document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.id===id));window.scrollTo(0,0);}
 const nav=document.getElementById("nav");
 TABS.forEach(([id,label])=>{const b=document.createElement("button");b.textContent=label;b.dataset.id=id;b.onclick=()=>show(id);nav.appendChild(b);});
-show("who");
+show("leads");
 </script>
 </body>
 </html>`;
