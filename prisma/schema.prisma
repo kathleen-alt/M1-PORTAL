@@ -1,0 +1,269 @@
+// ---------------------------------------------------------------------------
+// Orca Coast Growth Engine — Production database schema (PostgreSQL).
+//
+// The app runs in DEMO mode against seed data by default; set DATA_SOURCE=prisma
+// and DATABASE_URL to back it with this schema. `src/lib/store.ts` is the single
+// integration point to swap in Prisma queries.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Country {
+  CA
+  US
+}
+
+enum LeadSource {
+  google_maps
+  directory
+  public_db
+  website
+  manual
+}
+
+enum PipelineStage {
+  NEW_LEAD
+  CONTACTED
+  RESPONDED
+  DISCOVERY_CALL
+  PROPOSAL_SENT
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum LeadCategory {
+  HOT
+  WARM
+  COLD
+}
+
+enum Channel {
+  email
+  linkedin
+  phone
+  sms
+}
+
+enum EmailType {
+  first_touch
+  follow_up
+  value
+  case_study
+  final_check_in
+}
+
+/// Multi-tenant org (Orca Coast is the first tenant; structured for resale).
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users        User[]
+  leads        Lead[]
+  projects     OrcaProject[]
+  campaigns    Campaign[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  tenantId  String
+  email     String   @unique
+  name      String?
+  role      String   @default("member") // owner | admin | member
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  ownedLeads Lead[] @relation("LeadOwner")
+}
+
+/// A historical Orca Coast project — reference set for lookalike matching.
+model OrcaProject {
+  id            String  @id @default(cuid())
+  tenantId      String
+  name          String
+  industry      String
+  city          String
+  region        String
+  country       Country
+  website       String?
+  contractValue Int
+  facilitySqFt  Int?
+  year          Int
+  summary       String
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, industry])
+}
+
+model Lead {
+  id             String        @id @default(cuid())
+  tenantId       String
+  ownerId        String?
+  name           String
+  industry       String        // see src/lib/types.ts Industry union
+  tier           Int
+  website        String?
+  phone          String?
+  source         LeadSource    @default(manual)
+  stage          PipelineStage @default(NEW_LEAD)
+  dataConfidence Int           @default(50)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Address
+  line1      String?
+  city       String
+  region     String
+  postalCode String?
+  country    Country
+  lat        Float?
+  lng        Float?
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  owner      User?    @relation("LeadOwner", fields: [ownerId], references: [id])
+  contacts   Contact[]
+  signals    OrgSignals?
+  score      OpportunityScore?
+  enrollments CampaignEnrollment[]
+  activities Activity[]
+  proposals  Proposal[]
+
+  @@index([tenantId, stage])
+  @@index([tenantId, tier])
+}
+
+model Contact {
+  id             String      @id @default(cuid())
+  leadId         String
+  name           String
+  role           String
+  email          String?
+  phone          String?
+  linkedin       String?
+  confidence     Int         @default(50)
+  isDecisionMaker Boolean    @default(false)
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+/// Signals gathered/enriched about an organization — feed every score.
+model OrgSignals {
+  leadId             String   @id
+  orgSize            Int?
+  facilitySqFt       Int?
+  locationCount      Int?
+  childFocused       Boolean?
+  hasExistingPlayArea Boolean?
+  annualBudgetBand   String?  // under_500k | 500k_2m | 2m_10m | over_10m
+  weeklyFamilyTraffic Int?
+  growthIndicators   String[]
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+/// Persisted Revenue Opportunity scores (recomputed by the scoring engine).
+model OpportunityScore {
+  leadId              String       @id
+  playgroundFit       Int
+  budgetLikelihood    Int
+  familyTraffic       Int
+  decisionMakerAccess Int
+  revenuePotential    Int
+  opportunity         Int
+  leadScore           Int
+  category            LeadCategory
+  closeProbability    Int
+  estValueLow         Int
+  estValueHigh        Int
+  computedAt          DateTime     @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([opportunity])
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  vertical    String
+  focusPoints String[]
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  steps       CadenceStep[]
+  enrollments CampaignEnrollment[]
+}
+
+model CadenceStep {
+  id         String    @id @default(cuid())
+  campaignId String
+  day        Int
+  channel    Channel
+  emailType  EmailType?
+  label      String
+  order      Int
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, order])
+}
+
+model CampaignEnrollment {
+  id         String   @id @default(cuid())
+  campaignId String
+  leadId     String
+  status     String   @default("active") // active | paused | completed | replied
+  currentDay Int      @default(0)
+  startedAt  DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead     Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, leadId])
+}
+
+/// Generated/sent emails and outreach events.
+model Activity {
+  id        String   @id @default(cuid())
+  leadId    String
+  channel   Channel
+  emailType EmailType?
+  subject   String?
+  body      String?
+  status    String   @default("draft") // draft | sent | opened | replied | bounced
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+}
+
+model Proposal {
+  id              String   @id @default(cuid())
+  leadId          String
+  summary         String
+  concept         String
+  scope           String[]
+  budgetLow       Int
+  budgetHigh      Int
+  budgetNarrative String
+  createdAt       DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
