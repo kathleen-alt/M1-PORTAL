@@ -250,6 +250,7 @@ const ADDITIONAL_RAW: RawProject[] = [
   { name: "Orchard Road Christian Center: CO", industry: "large_church", region: "CO", country: "US", website: "orcconline.org" },
   { name: "Puyallup Foursquare Church: Puyallup, WA", industry: "large_church", city: "Puyallup", region: "WA", country: "US", website: "myfoursquarechurch.com" },
   { name: "Radiant Church: MI", industry: "multi_campus_church", region: "MI", country: "US", website: "radiant.church" },
+  { name: "Grace Church: Michigan", industry: "large_church", region: "MI", country: "US" },
   { name: "The Crossing Church: FL", industry: "multi_campus_church", region: "FL", country: "US", website: "wearecrossing.com" },
   { name: "Trinity Fellowship Church: Amarillo, TX", industry: "multi_campus_church", city: "Amarillo", region: "TX", country: "US", website: "tfc.org" },
 
