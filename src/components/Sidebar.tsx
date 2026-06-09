@@ -10,6 +10,7 @@ const NAV = [
   { href: "/leads", label: "Lead Discovery", icon: "🔍" },
   { href: "/pipeline", label: "CRM Pipeline", icon: "📊" },
   { href: "/campaigns", label: "Campaigns", icon: "✉️" },
+  { href: "/sequences", label: "Email Sequences", icon: "📧" },
   { href: "/market", label: "Market Expansion", icon: "📈" },
   { href: "/heatmap", label: "Opportunity Heat Map", icon: "🔥" },
   { href: "/analytics", label: "Analytics", icon: "📉" },

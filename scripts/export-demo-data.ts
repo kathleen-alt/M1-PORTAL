@@ -69,9 +69,44 @@ async function main() {
   const taxonomy: Record<string, { label: string; tier: number }> = {};
   for (const ind of ALL_INDUSTRIES) taxonomy[ind] = { label: industryLabel(ind), tier: industryTier(ind) };
 
+  // A sample sequence enrollment for the top recommendation: cadence steps with
+  // due dates and pre-generated emails — demonstrates "move into a sequence".
+  const top = recs[0];
+  const cadence = CAMPAIGN_TEMPLATES[3].cadence;
+  const start = Date.now();
+  const sampleSequence = {
+    leadName: top.lead.name,
+    campaignName: "Recreation & Community Campaign",
+    steps: await Promise.all(
+      cadence.map(async (step) => {
+        let subject: string | undefined;
+        let body: string | undefined;
+        if (step.channel === "email" && step.emailType) {
+          const e = await generateEmail({
+            lead: top.lead,
+            emailType: step.emailType,
+            campaignFocus: CAMPAIGN_TEMPLATES[3].focusPoints,
+            similarProject: top.lookalikes[0]?.project,
+          });
+          subject = e.subject;
+          body = e.body;
+        }
+        return {
+          day: step.day,
+          channel: step.channel,
+          label: step.label,
+          dueAt: new Date(start + step.day * 86_400_000).toISOString(),
+          subject,
+          body,
+        };
+      }),
+    ),
+  };
+
   const data = {
     generatedAt: new Date().toISOString(),
     taxonomy,
+    sampleSequence,
     analytics: computeAnalytics(leads),
     recommendations: recsWithEmail,
     market: marketExpansion(leads, projects),

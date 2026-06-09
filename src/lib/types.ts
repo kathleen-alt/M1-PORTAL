@@ -270,3 +270,35 @@ export interface ActivityLog {
   summary: string;
   createdAt: string;
 }
+
+// --- Email sequence enrollment ------------------------------------------
+
+export type StepStatus = "pending" | "sent" | "skipped";
+
+export interface EnrollmentStep {
+  day: number;
+  channel: Channel;
+  emailType?: EmailType;
+  label: string;
+  /** ISO date this step is due (startedAt + day). */
+  dueAt: string;
+  status: StepStatus;
+  /** Generated content for email steps. */
+  subject?: string;
+  body?: string;
+  /** The address this step would send to. */
+  toEmail?: string;
+}
+
+export interface Enrollment {
+  id: string;
+  leadId: string;
+  leadName: string;
+  campaignId: string;
+  campaignName: string;
+  status: "active" | "paused" | "completed";
+  startedAt: string;
+  steps: EnrollmentStep[];
+  /** Index of the next pending step. */
+  currentIndex: number;
+}

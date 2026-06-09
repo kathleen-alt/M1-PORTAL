@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getActivities, getLead, getProjects } from "@/lib/store";
+import { getActivities, getCampaigns, getEnrollments, getLead, getProjects } from "@/lib/store";
 import { recommendLead } from "@/lib/prospecting/recommend";
 import { industryLabel } from "@/lib/taxonomy";
 import { PageHeader, ScoreBar, ScoreRing } from "@/components/ui";
 import ActivityPanel from "@/components/ActivityPanel";
+import OutreachPanel from "@/components/OutreachPanel";
 import { categoryBadge, moneyRange, scoreColor } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,8 @@ export default function LeadDetail({ params }: { params: { id: string } }) {
   if (!lead) notFound();
   const rec = recommendLead(lead, getProjects());
   const activities = getActivities(lead.id);
+  const campaigns = getCampaigns().map((c) => ({ id: c.id, name: c.name }));
+  const activeEnrollment = getEnrollments(lead.id).find((e) => e.status !== "completed");
 
   return (
     <div>
@@ -69,6 +72,13 @@ export default function LeadDetail({ params }: { params: { id: string } }) {
               ))}
             </ul>
           </div>
+
+          <OutreachPanel
+            leadId={lead.id}
+            campaigns={campaigns}
+            initialContacts={lead.contacts}
+            initialEnrollment={activeEnrollment}
+          />
 
           <ActivityPanel leadId={lead.id} initialStage={lead.stage} initialActivities={activities} />
         </div>

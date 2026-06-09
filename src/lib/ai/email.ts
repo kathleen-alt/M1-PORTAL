@@ -39,7 +39,9 @@ function firstName(full: string): string {
 function templateEmail(ctx: EmailPromptContext): GeneratedEmail {
   const { lead, emailType, similarProject } = ctx;
   const dm = lead.contacts.find((c) => c.isDecisionMaker) ?? lead.contacts[0];
-  const greeting = dm ? `Hi ${firstName(dm.name)},` : "Hello,";
+  // Role inboxes (info@/office@) have no real person — greet generically.
+  const isRoleInbox = dm ? /inbox|^office$|general/i.test(dm.name) : false;
+  const greeting = dm && !isRoleInbox ? `Hi ${firstName(dm.name)},` : "Hello,";
   const industry = industryLabel(lead.industry).toLowerCase();
   const ref = similarProject
     ? `${similarProject.name} in ${similarProject.city}`

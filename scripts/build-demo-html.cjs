@@ -212,11 +212,23 @@ function view_pipeline(){
 
 function view_campaigns(){
   const icon={email:"✉️",phone:"📞",linkedin:"in",sms:"💬"};
-  return '<h1>Outreach Campaign Builder</h1><p class="sub">Vertical templates with the automated cadence (Day 1 → 30). The full app adds an interactive AI email studio.</p>'
+  let out='<h1>Outreach Campaigns & Sequences</h1><p class="sub">Vertical templates with the automated cadence (Day 1 → 30). In the app you find contact emails, then move any account into a sequence — emails are pre-generated and scheduled.</p>'
     +'<div class="grid g2">'+DATA.campaigns.map(c=>'<div class="card"><div class="row"><b>'+esc(c.name)+'</b><span class="pill b-cold">'+esc(c.vertical)+'</span></div>'
       +'<div style="margin-top:6px">'+c.focusPoints.map(f=>'<span class="chip">'+esc(f)+'</span>').join("")+'</div>'
       +'<div class="lbl muted" style="margin-top:14px;font-size:11px;text-transform:uppercase">Automated Cadence</div>'
       +'<div style="margin-top:8px">'+c.cadence.map(s=>'<div style="display:flex;gap:10px;align-items:center;margin:6px 0"><span class="chip" style="width:60px;justify-content:center">Day '+s.day+'</span><span>'+(icon[s.channel]||"")+' '+esc(s.label)+'</span></div>').join("")+'</div></div>').join("")+'</div>';
+
+  const sq=DATA.sampleSequence;
+  if(sq){
+    const fmt=iso=>new Date(iso).toLocaleDateString("en-CA",{month:"short",day:"numeric"});
+    out+='<h2 class="section-title" style="margin:22px 0 10px">Sample sequence enrollment — '+esc(sq.leadName)+'</h2>'
+      +'<div class="note">This is what "move into a sequence" produces: each step scheduled, with the email written and ready. Step 1 marked sent advances the account to Contacted automatically.</div>'
+      +'<div class="card"><div class="row"><b>'+esc(sq.campaignName)+'</b><span class="pill b-warm">active</span></div><ol style="list-style:none;padding:0;margin:12px 0 0">'
+      +sq.steps.map((s,i)=>'<li style="border:1px solid '+(i===0?"var(--green)":"#143a54")+';border-radius:9px;padding:10px;margin:6px 0;background:rgba(6,18,28,.4)"><div style="display:flex;justify-content:space-between"><span><span class="muted">Day '+s.day+'</span> &nbsp;'+(icon[s.channel]||"")+' '+esc(s.label)+'</span><span class="tag">'+(i===0?'<span class="hl">due '+fmt(s.dueAt)+'</span>':'due '+fmt(s.dueAt))+'</span></div>'
+        +(s.subject?'<details style="margin-top:6px"><summary class="tag">Subject: '+esc(s.subject)+'</summary><pre style="white-space:pre-wrap;font-family:inherit;color:var(--ink);margin:6px 0 0">'+esc(s.body)+'</pre></details>':'')+'</li>').join("")
+      +'</ol></div>';
+  }
+  return out;
 }
 
 function view_market(){
