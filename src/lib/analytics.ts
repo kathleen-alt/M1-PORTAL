@@ -58,8 +58,10 @@ export function computeAnalytics(leads: Lead[]): AnalyticsSummary {
   return {
     leadsGenerated: leads.length,
     emailsSent,
-    openRate: 58,
-    replyRate: 19,
+    // Open/reply rates populate from real email events (provider webhooks).
+    // No sends yet → 0, rather than a fabricated benchmark.
+    openRate: 0,
+    replyRate: 0,
     meetingsBooked,
     opportunities,
     revenuePipeline,
