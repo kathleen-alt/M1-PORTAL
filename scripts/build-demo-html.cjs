@@ -159,12 +159,13 @@ function exportAllContacts(){const ls=STATE.starredOnly?STATE.leads.filter(l=>l.
 function exportLeadContacts(id){const l=leadById(id);if(l)downloadCsv("orca-contacts-"+id+".csv",leadsCsv([l]));}
 
 // ---------- state ----------
-const LS="orcaDemoState_v3";
-let STATE={leads:[],enroll:{},sel:null,report:{},starredOnly:false};
+const LS="orcaDemoState_v4";
+const SOURCED=(DATA.sourcedLeads||[]).map(l=>JSON.parse(JSON.stringify(l)));
+let STATE={leads:SOURCED.map(l=>JSON.parse(JSON.stringify(l))),enroll:{},sel:null,report:{},starredOnly:false};
 try{const sv=localStorage.getItem(LS);if(sv){const o=JSON.parse(sv);if(o.leads)STATE.leads=o.leads;if(o.enroll)STATE.enroll=o.enroll;}}catch(e){}
 function save(){try{localStorage.setItem(LS,JSON.stringify({leads:STATE.leads,enroll:STATE.enroll}));}catch(e){}}
 function leadById(id){return STATE.leads.find(l=>l.id===id);}
-function resetDemo(){try{localStorage.removeItem(LS);}catch(e){}STATE.leads=[];STATE.enroll={};STATE.sel=null;STATE.report={};STATE.starredOnly=false;show("leads");}
+function resetDemo(){try{localStorage.removeItem(LS);}catch(e){}STATE.leads=SOURCED.map(l=>JSON.parse(JSON.stringify(l)));STATE.enroll={};STATE.sel=null;STATE.report={};STATE.starredOnly=false;show("leads");}
 
 // ---------- import ----------
 function addImported(text,defRegion){const lines=text.split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean);const def=(defRegion||"").toUpperCase();let added=0;lines.forEach((line,i)=>{const parts=splitLine(line).map(s=>s.trim());const name=parts[0];if(!name||/^name$/i.test(name))return;let region=null,country=null;const fr=findRegion(line);if(parts[2]&&(CA.indexOf(parts[2].toUpperCase())>=0||US.indexOf(parts[2].toUpperCase())>=0)){region=parts[2].toUpperCase();country=CA.indexOf(region)>=0?"CA":"US";}else if(fr){region=fr.region;country=fr.country;}else if(def){region=def;country=CA.indexOf(def)>=0?"CA":(US.indexOf(def)>=0?"US":null);}if(!region||!country)return;let city=parts[1]&&!(CA.indexOf(parts[1].toUpperCase())>=0||US.indexOf(parts[1].toUpperCase())>=0)&&!/\\d/.test(parts[1])&&!/\\.[a-z]{2,}/i.test(parts[1])?parts[1]:"";const website=parts.find(p=>/\\.[a-z]{2,}/i.test(p)&&/(www|\\.com|\\.ca|\\.org|\\.net|http)/i.test(p));const ind=classify(name,parts[2]);const key=(name.toLowerCase()+"|"+city.toLowerCase()+"|"+region);if(STATE.leads.some(l=>(l.name.toLowerCase()+"|"+(l.address.city||"").toLowerCase()+"|"+l.address.region)===key))return;STATE.leads.push({id:"imp_"+Date.now()+"_"+i,name:name,industry:ind,website:website||undefined,address:{city:city,region:region,country:country},contacts:[],signals:{},dataConfidence:55,source:"directory",stage:"New Lead"});added++;});save();return added;}

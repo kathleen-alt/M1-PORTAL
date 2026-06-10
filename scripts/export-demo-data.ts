@@ -5,6 +5,7 @@
 // The demo ships with NO leads; the user imports real leads in-browser and the
 // engine computes scores, lookalikes, pipeline, and analytics live from them.
 import { getProjects } from "../src/lib/store";
+import { getLeads } from "../src/lib/store";
 import { CAMPAIGN_TEMPLATES } from "../src/lib/data/campaigns";
 import { INDUSTRY_META, ALL_INDUSTRIES, industryLabel } from "../src/lib/taxonomy";
 
@@ -34,11 +35,25 @@ const portfolio = getProjects().map((p) => ({
   value: p.contractValue,
 }));
 
+const sourcedLeads = getLeads().map((l) => ({
+  id: l.id,
+  name: l.name,
+  industry: l.industry,
+  website: l.website,
+  address: l.address,
+  contacts: l.contacts,
+  signals: l.signals,
+  dataConfidence: l.dataConfidence,
+  source: l.source,
+  stage: l.stage,
+}));
+
 const data = {
   generatedAt: new Date().toISOString(),
   industryMeta,
   campaigns: CAMPAIGN_TEMPLATES,
   portfolio,
+  sourcedLeads,
 };
 
 process.stdout.write(JSON.stringify(data));
