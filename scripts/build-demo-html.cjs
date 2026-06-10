@@ -67,6 +67,24 @@ const html = `<!doctype html>
   .col h4{margin:0;padding:10px;border-bottom:1px solid #143a54;font-size:13px;display:flex;justify-content:space-between}
   .col .body{padding:8px;display:flex;flex-direction:column;gap:8px;min-height:40px}
   .empty{border:1px dashed #1c5375;border-radius:13px;padding:28px;text-align:center;color:var(--muted)}
+  .menuBtn{display:none;margin-left:auto;background:none;border:1px solid #143a54;color:#aed8ee;border-radius:8px;padding:2px 11px;font-size:18px;cursor:pointer}
+  @media (max-width:760px){
+    .wrap{flex-direction:column}
+    .side{width:auto;flex:none;height:auto;position:sticky;top:0;z-index:30;padding:10px 14px;border-right:0;border-bottom:1px solid #0f2c40}
+    .brand{padding:0;align-items:center}
+    .menuBtn{display:block}
+    .nav{max-height:0;overflow:hidden;transition:max-height .22s ease}
+    .nav.open{max-height:560px;margin-top:10px}
+    .inner{padding:16px}
+    h1{font-size:19px}
+    .g2,.g3,.g4{grid-template-columns:1fr}
+    .tablewrap{overflow-x:auto}
+    table{min-width:600px}
+    .row{flex-wrap:wrap}
+    .bars{grid-template-columns:1fr}
+    input[type=search],input[type=text]{width:100% !important}
+    .ring{width:52px;height:52px;flex-basis:52px}.ring .in{width:40px;height:40px}
+  }
 </style>
 </head>
 <body>
@@ -75,6 +93,7 @@ const html = `<!doctype html>
     <div class="brand">
       <svg width="40" height="40" viewBox="0 0 100 100" aria-label="Orca Coast"><defs><radialGradient id="g" cx="50%" cy="40%" r="70%"><stop offset="0%" stop-color="#5bc85f"/><stop offset="100%" stop-color="#1f7a34"/></radialGradient></defs><ellipse cx="50" cy="52" rx="46" ry="34" fill="url(#g)" stroke="#15692c" stroke-width="2"/><path d="M22 64 C30 40 48 28 70 26 C60 34 58 42 60 50 C66 46 74 44 80 46 C70 52 64 60 58 70 C46 64 32 64 22 64 Z" fill="#0a1f2e"/><circle cx="52" cy="42" r="3.4" fill="#fff"/></svg>
       <div><b><span>Orca</span> <span class="grn">Coast</span></b><small>Growth Engine</small></div>
+      <button class="menuBtn" id="menuBtn" aria-label="Menu">☰</button>
     </div>
     <nav class="nav" id="nav"></nav>
   </aside>
@@ -219,7 +238,8 @@ function view_portfolio(){const rows=DATA.portfolio;setTimeout(()=>{const inp=do
 
 const VIEWS={leads:view_leads,source:view_source,who:view_who,pipeline:view_pipeline,campaigns:view_campaigns,market:view_market,heatmap:view_heatmap,analytics:view_analytics,portfolio:view_portfolio};
 function show(id){document.getElementById("view").innerHTML=VIEWS[id]();document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.id===id));window.scrollTo(0,0);}
-const nav=document.getElementById("nav");TABS.forEach(t=>{const b=document.createElement("button");b.textContent=t[1];b.dataset.id=t[0];b.onclick=()=>show(t[0]);nav.appendChild(b);});
+const nav=document.getElementById("nav");TABS.forEach(t=>{const b=document.createElement("button");b.textContent=t[1];b.dataset.id=t[0];b.onclick=()=>{show(t[0]);if(window.innerWidth<=760)nav.classList.remove("open");};nav.appendChild(b);});
+const menuBtn=document.getElementById("menuBtn");if(menuBtn)menuBtn.onclick=()=>nav.classList.toggle("open");
 show("leads");
 </script>
 </body>
