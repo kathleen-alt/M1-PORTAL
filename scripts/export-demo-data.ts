@@ -40,6 +40,7 @@ const sourcedLeads = getLeads().map((l) => ({
   name: l.name,
   industry: l.industry,
   website: l.website,
+  phone: l.phone,
   address: l.address,
   contacts: l.contacts,
   signals: l.signals,

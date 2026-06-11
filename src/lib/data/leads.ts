@@ -19,20 +19,20 @@ function inbox(domain?: string): Contact[] {
 }
 function srcLead(
   id: string, name: string, industry: Lead["industry"], city: string,
-  region: string, country: "CA" | "US", website?: string,
+  region: string, country: "CA" | "US", website?: string, phone?: string,
 ): Lead {
   return {
-    id, name, industry, website,
+    id, name, industry, website, phone,
     address: { city, region, country },
     contacts: inbox(domainOf(website)),
-    signals: {}, dataConfidence: 60, source: "public_db", stage: "New Lead",
+    signals: {}, dataConfidence: phone ? 70 : 60, source: "public_db", stage: "New Lead",
     createdAt: new Date().toISOString(),
   };
 }
 
 export const SEED_LEADS: Lead[] = [
   // YMCA associations (greenfield — no Orca playground yet), right scale
-  srcLead("src_ymca_calgary", "YMCA Calgary", "ymca", "Calgary", "AB", "CA", "ymcacalgary.org"),
+  srcLead("src_ymca_calgary", "YMCA Calgary", "ymca", "Calgary", "AB", "CA", "ymcacalgary.org", "+1-403-351-5262"),
   srcLead("src_ymca_nab", "YMCA of Northern Alberta", "ymca", "Edmonton", "AB", "CA"),
   srcLead("src_ymca_leth", "YMCA of Lethbridge", "ymca", "Lethbridge", "AB", "CA"),
   srcLead("src_ymca_medhat", "YMCA of Medicine Hat", "ymca", "Medicine Hat", "AB", "CA"),
@@ -48,7 +48,7 @@ export const SEED_LEADS: Lead[] = [
   srcLead("src_fefc_yyc", "First Evangelical Free Church of Calgary", "large_church", "Calgary", "AB", "CA", "fefc.ca"),
   srcLead("src_brentview", "Brentview Church", "large_church", "Calgary", "AB", "CA", "brentview.church"),
   srcLead("src_calgarylife", "Calgary Life Church", "large_church", "Calgary", "AB", "CA", "calgarylifechurch.com"),
-  srcLead("src_highridge", "HighRidge Church", "large_church", "Fort Worth", "TX", "US", "highridgechurch.com"),
-  srcLead("src_centralbible", "Central Bible Church", "large_church", "Fort Worth", "TX", "US", "wearecentral.org"),
+  srcLead("src_highridge", "HighRidge Church", "large_church", "Fort Worth", "TX", "US", "highridgechurch.com", "+1-817-249-5200"),
+  srcLead("src_centralbible", "Central Bible Church", "large_church", "Fort Worth", "TX", "US", "wearecentral.org", "+1-817-274-1315"),
   srcLead("src_crosschurch", "Cross Church", "multi_campus_church", "Fort Worth", "TX", "US", "ccdfw.org"),
 ];
