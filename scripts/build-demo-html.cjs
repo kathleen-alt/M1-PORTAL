@@ -161,11 +161,12 @@ function exportLeadContacts(id){const l=leadById(id);if(l)downloadCsv("orca-cont
 // ---------- state ----------
 const LS="orcaDemoState_v4";
 const SOURCED=(DATA.sourcedLeads||[]).map(l=>JSON.parse(JSON.stringify(l)));
-let STATE={leads:SOURCED.map(l=>JSON.parse(JSON.stringify(l))),enroll:{},sel:null,report:{},starredOnly:false};
+let STATE={leads:SOURCED.map(l=>JSON.parse(JSON.stringify(l))),enroll:{},sel:null,report:{},starredOnly:false,segment:""};
 try{const sv=localStorage.getItem(LS);if(sv){const o=JSON.parse(sv);if(o.leads)STATE.leads=o.leads;if(o.enroll)STATE.enroll=o.enroll;}}catch(e){}
 function save(){try{localStorage.setItem(LS,JSON.stringify({leads:STATE.leads,enroll:STATE.enroll}));}catch(e){}}
 function leadById(id){return STATE.leads.find(l=>l.id===id);}
-function resetDemo(){try{localStorage.removeItem(LS);}catch(e){}STATE.leads=SOURCED.map(l=>JSON.parse(JSON.stringify(l)));STATE.enroll={};STATE.sel=null;STATE.report={};STATE.starredOnly=false;show("leads");}
+function resetDemo(){try{localStorage.removeItem(LS);}catch(e){}STATE.leads=SOURCED.map(l=>JSON.parse(JSON.stringify(l)));STATE.enroll={};STATE.sel=null;STATE.report={};STATE.starredOnly=false;STATE.segment="";show("leads");}
+function setSegment(v){STATE.segment=v;show("leads");}
 
 // ---------- import ----------
 function addImported(text,defRegion){const lines=text.split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean);const def=(defRegion||"").toUpperCase();let added=0;lines.forEach((line,i)=>{const parts=splitLine(line).map(s=>s.trim());const name=parts[0];if(!name||/^name$/i.test(name))return;let region=null,country=null;const fr=findRegion(line);if(parts[2]&&(CA.indexOf(parts[2].toUpperCase())>=0||US.indexOf(parts[2].toUpperCase())>=0)){region=parts[2].toUpperCase();country=CA.indexOf(region)>=0?"CA":"US";}else if(fr){region=fr.region;country=fr.country;}else if(def){region=def;country=CA.indexOf(def)>=0?"CA":(US.indexOf(def)>=0?"US":null);}if(!region||!country)return;let city=parts[1]&&!(CA.indexOf(parts[1].toUpperCase())>=0||US.indexOf(parts[1].toUpperCase())>=0)&&!/\\d/.test(parts[1])&&!/\\.[a-z]{2,}/i.test(parts[1])?parts[1]:"";const website=parts.find(p=>/\\.[a-z]{2,}/i.test(p)&&/(www|\\.com|\\.ca|\\.org|\\.net|http)/i.test(p));const ind=classify(name,parts[2]);const key=(name.toLowerCase()+"|"+city.toLowerCase()+"|"+region);if(STATE.leads.some(l=>(l.name.toLowerCase()+"|"+(l.address.city||"").toLowerCase()+"|"+l.address.region)===key))return;STATE.leads.push({id:"imp_"+Date.now()+"_"+i,name:name,industry:ind,website:website||undefined,address:{city:city,region:region,country:country},contacts:[],signals:{},dataConfidence:55,source:"directory",stage:"New Lead"});added++;});save();return added;}
@@ -187,12 +188,14 @@ function importBox(prefill){return '<div class="card"><b>Paste your leads</b><di
 function view_leads(){
   if(STATE.sel)return leadDetail(STATE.sel);
   if(STATE.leads.length===0){return '<h1>Leads Workspace</h1><p class="sub">No fabricated data here. Add your real leads to begin — they\\'ll be classified into the 6-tier taxonomy, scored against your real portfolio, and ready to enrich and sequence.</p>'+importBox("");}
-  let rows=STATE.leads.map(l=>({l:l,sc:scoreOf(l),q:qualify(l)}));if(STATE.starredOnly)rows=rows.filter(o=>o.l.starred);rows.sort((a,b)=>b.sc.opportunity-a.sc.opportunity);
+  let rows=STATE.leads.map(l=>({l:l,sc:scoreOf(l),q:qualify(l)}));if(STATE.starredOnly)rows=rows.filter(o=>o.l.starred);if(STATE.segment)rows=rows.filter(o=>o.l.industry===STATE.segment);rows.sort((a,b)=>b.sc.opportunity-a.sc.opportunity);
   const starredCount=STATE.leads.filter(l=>l.starred).length;
+  const segCounts={};STATE.leads.forEach(l=>{segCounts[l.industry]=(segCounts[l.industry]||0)+1;});
+  const segOpts='<option value="">All types ('+STATE.leads.length+')</option>'+Object.keys(segCounts).sort((a,b)=>segCounts[b]-segCounts[a]).map(k=>'<option value="'+k+'"'+(STATE.segment===k?' selected':'')+'>'+esc(IM[k].label)+' ('+segCounts[k]+')</option>').join("");
   setTimeout(()=>{const f=document.getElementById("lf");if(f)f.oninput=()=>{const q=f.value.toLowerCase();document.querySelectorAll("#ltable tbody tr").forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().indexOf(q)>=0?"":"none";});};},0);
   return '<div class="row"><h1>Leads Workspace</h1><div style="display:flex;gap:8px"><button class="btn-ghost" onclick="toggleStarredFilter()">'+(STATE.starredOnly?"Show all":("★ Starred only ("+starredCount+")"))+'</button><button class="btnG" onclick="exportAllContacts()">⬇ Export '+(STATE.starredOnly?"starred":"contacts")+'</button><button class="btn-ghost" onclick="resetDemo()">Reset</button></div></div>'
     +'<p class="sub">'+STATE.leads.length+' real leads. ★ star priorities, click a row to open, ✨ enrich, ▶ push to a sequence, export CSV. Saved in your browser.</p>'
-    +'<div style="margin-bottom:12px"><input id="lf" type="search" placeholder="Filter leads…" style="width:280px"></div>'
+    +'<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap"><select onchange="setSegment(this.value)" title="Segment by type">'+segOpts+'</select><input id="lf" type="search" placeholder="Filter leads…" style="width:240px"></div>'
     +'<div class="tablewrap"><table id="ltable"><thead><tr><th></th><th>Organization</th><th>Tier</th><th>Location</th><th>Opp</th><th>Category</th><th>Stage</th><th>Contacts</th><th>Sequence</th></tr></thead><tbody>'
     +rows.map(o=>{const l=o.l,sc=o.sc,q=o.q;const e=STATE.enroll[l.id];const we=l.contacts.filter(c=>c.email).length;return '<tr style="cursor:pointer" onclick="openLead(\\''+l.id+'\\')"><td style="text-align:center" onclick="event.stopPropagation();toggleStar(\\''+l.id+'\\')">'+starIcon(l.starred)+'</td><td><b>'+esc(l.name)+'</b><div class="tag">'+esc(IM[l.industry].label)+'</div></td><td>T'+sc.tier+'</td><td class="muted">'+esc(l.address.city)+', '+esc(l.address.region)+'</td><td style="color:'+col(sc.opportunity)+';font-weight:700">'+sc.opportunity+'</td><td><span class="pill '+badge(q.category)+'">'+q.category+'</span></td><td class="muted">'+esc(l.stage)+'</td><td class="muted">'+we+'/'+l.contacts.length+' ✉</td><td class="muted">'+(e?(esc(e.campaignName.split(" ")[0])+" "+e.steps.filter(s=>s.status==="sent").length+"/"+e.steps.length):"—")+'</td></tr>';}).join("")+'</tbody></table></div>';
 }

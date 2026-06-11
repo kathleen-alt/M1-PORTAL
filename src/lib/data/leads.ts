@@ -59,4 +59,39 @@ export const SEED_LEADS: Lead[] = [
   srcLead("src_bigwhite", "Big White Ski Resort", "resort", "Kelowna", "BC", "CA", "bigwhite.com"),
   srcLead("src_lakelouise", "Lake Louise Ski Resort", "resort", "Lake Louise", "AB", "CA", "skilouise.com"),
   srcLead("src_norquay", "Mount Norquay", "resort", "Banff", "AB", "CA", "banffnorquay.com"),
+
+  // --- Expanded, segmented prospect set (real orgs; verify/enrich before outreach) ---
+
+  // YMCAs (US associations) — greenfield flagship play spaces
+  srcLead("src_ymca_dallas", "YMCA of Metropolitan Dallas", "ymca", "Dallas", "TX", "US"),
+  srcLead("src_ymca_houston", "YMCA of Greater Houston", "ymca", "Houston", "TX", "US"),
+  srcLead("src_ymca_cfl", "YMCA of Central Florida", "ymca", "Orlando", "FL", "US"),
+  srcLead("src_ymca_sfl", "YMCA of South Florida", "ymca", "Fort Lauderdale", "FL", "US"),
+  srcLead("src_ymca_atlanta", "YMCA of Metro Atlanta", "ymca", "Atlanta", "GA", "US"),
+  srcLead("src_ymca_charlotte", "YMCA of Greater Charlotte", "ymca", "Charlotte", "NC", "US"),
+  srcLead("src_ymca_triangle", "YMCA of the Triangle", "ymca", "Raleigh", "NC", "US"),
+  srcLead("src_ymca_cincy", "YMCA of Greater Cincinnati", "ymca", "Cincinnati", "OH", "US"),
+  srcLead("src_ymca_cleveland", "YMCA of Greater Cleveland", "ymca", "Cleveland", "OH", "US"),
+  srcLead("src_ymca_detroit", "YMCA of Metropolitan Detroit", "ymca", "Detroit", "MI", "US"),
+  srcLead("src_ymca_pierce", "YMCA of Pierce and Kitsap Counties", "ymca", "Tacoma", "WA", "US"),
+  srcLead("src_ymca_rochester", "YMCA of Greater Rochester", "ymca", "Rochester", "NY", "US"),
+  srcLead("src_ymca_indy", "YMCA of Greater Indianapolis", "ymca", "Indianapolis", "IN", "US"),
+  srcLead("src_ymca_sd", "YMCA of San Diego County", "ymca", "San Diego", "CA", "US"),
+  srcLead("src_ymca_honolulu", "YMCA of Honolulu", "ymca", "Honolulu", "HI", "US"),
+
+  // Churches (more verified regional, children's ministry)
+  srcLead("src_cfg", "Calgary Full Gospel Church", "large_church", "Calgary", "AB", "CA", "cfg.church"),
+  srcLead("src_c3yyc", "C3 Church Calgary", "large_church", "Calgary", "AB", "CA", "myc3church.ca"),
+  srcLead("src_centrestreet", "Centre Street Church", "multi_campus_church", "Calgary", "AB", "CA", "cschurch.ca"),
+  srcLead("src_fwpres", "Fort Worth Presbyterian Church", "large_church", "Fort Worth", "TX", "US", "fortworthpca.org"),
+
+  // Family resorts (mountain/lake — kids' programs, no dedicated indoor playground)
+  srcLead("src_panorama", "Panorama Mountain Resort", "resort", "Panorama", "BC", "CA", "panoramaresort.com"),
+  srcLead("src_kickinghorse", "Kicking Horse Mountain Resort", "resort", "Golden", "BC", "CA", "kickinghorseresort.com"),
+  srcLead("src_fernie", "Fernie Alpine Resort", "resort", "Fernie", "BC", "CA", "skifernie.com"),
+  srcLead("src_fairmont", "Fairmont Hot Springs Resort", "resort", "Fairmont Hot Springs", "BC", "CA", "fairmonthotsprings.com"),
+  srcLead("src_predator", "Predator Ridge Resort", "resort", "Vernon", "BC", "CA", "predatorridge.com"),
+  srcLead("src_revelstoke", "Revelstoke Mountain Resort", "resort", "Revelstoke", "BC", "CA", "revelstokemountainresort.com"),
+  srcLead("src_bluemountain", "Blue Mountain Resort", "resort", "Blue Mountains", "ON", "CA", "bluemountain.ca"),
+  srcLead("src_tremblant", "Mont-Tremblant Resort", "resort", "Mont-Tremblant", "QC", "CA", "tremblant.ca"),
 ];
