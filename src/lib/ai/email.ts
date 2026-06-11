@@ -59,7 +59,7 @@ function templateEmail(ctx: EmailPromptContext): GeneratedEmail {
         subject: `A play space families at ${lead.name} would love`,
         body: `${greeting}
 
-I lead business development at Orca Coast Playgrounds — we design and install indoor playgrounds for ${industry}s like ${lead.name}. We recently completed a project for ${ref}, and the response from families has been remarkable.
+I lead business development at Orca Coast Playgrounds — we custom-design and install indoor playgrounds (themed, toddler, or large-scale) sized to fit any space and budget. We recently completed a project for ${ref}, and the response from families has been remarkable.
 
 Given everything happening at ${lead.name} in ${lead.address.city}, I think there's a real opportunity to create a destination play experience that drives engagement and keeps families coming back.
 

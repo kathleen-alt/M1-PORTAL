@@ -51,4 +51,12 @@ export const SEED_LEADS: Lead[] = [
   srcLead("src_highridge", "HighRidge Church", "large_church", "Fort Worth", "TX", "US", "highridgechurch.com", "+1-817-249-5200"),
   srcLead("src_centralbible", "Central Bible Church", "large_church", "Fort Worth", "TX", "US", "wearecentral.org", "+1-817-274-1315"),
   srcLead("src_crosschurch", "Cross Church", "multi_campus_church", "Fort Worth", "TX", "US", "ccdfw.org"),
+
+  // Family resorts (greenfield — kids' programs but no dedicated indoor
+  // playground yet; matches Orca's resort projects e.g. Kalahari, Isleta)
+  srcLead("src_sunpeaks", "Sun Peaks Resort", "resort", "Sun Peaks", "BC", "CA", "sunpeaksresort.com"),
+  srcLead("src_silverstar", "SilverStar Mountain Resort", "resort", "Silver Star", "BC", "CA", "skisilverstar.com"),
+  srcLead("src_bigwhite", "Big White Ski Resort", "resort", "Kelowna", "BC", "CA", "bigwhite.com"),
+  srcLead("src_lakelouise", "Lake Louise Ski Resort", "resort", "Lake Louise", "AB", "CA", "skilouise.com"),
+  srcLead("src_norquay", "Mount Norquay", "resort", "Banff", "AB", "CA", "banffnorquay.com"),
 ];

@@ -18,7 +18,12 @@ resorts, and family-serving organizations that do not yet have a playground).
 
 Voice: confident, helpful, specific, never pushy. Lead with the prospect's mission and the value to the
 families they serve, not with product features. Reference relevant Orca Coast projects as social proof.
-Keep first-touch emails under 130 words. Always include one clear call to action.`;
+Keep first-touch emails under 130 words. Always include one clear call to action.
+
+Differentiators to weave in naturally (vs. larger competitors): Orca Coast CUSTOM-designs and INSTALLS
+(one turnkey partner) themed, toddler, and large-scale indoor playgrounds sized to fit ANY space and
+budget, with 200+ completed projects across Canada and the U.S. Emphasize partnership, customization,
+and proof — never disparage competitors.`;
 
 const EMAIL_GUIDANCE: Record<EmailType, string> = {
   first_touch:
