@@ -41,4 +41,14 @@ export const SEED_LEADS: Lead[] = [
   srcLead("src_ymca_ceo", "YMCA of Central East Ontario", "ymca", "Peterborough", "ON", "CA"),
   srcLead("src_ymca_sibc", "YMCA of Southern Interior BC", "ymca", "Kelowna", "BC", "CA"),
   srcLead("src_ymca_vanisle", "YMCA-YWCA of Vancouver Island", "ymca", "Victoria", "BC", "CA"),
+
+  // Regional churches with children's ministries (greenfield, right scale —
+  // not celebrity megachurches; matches customers like Pantego Bible / Fielder Road)
+  srcLead("src_christchurch_yyc", "Christ Church Calgary", "large_church", "Calgary", "AB", "CA", "christchurchcalgary.org"),
+  srcLead("src_fefc_yyc", "First Evangelical Free Church of Calgary", "large_church", "Calgary", "AB", "CA", "fefc.ca"),
+  srcLead("src_brentview", "Brentview Church", "large_church", "Calgary", "AB", "CA", "brentview.church"),
+  srcLead("src_calgarylife", "Calgary Life Church", "large_church", "Calgary", "AB", "CA", "calgarylifechurch.com"),
+  srcLead("src_highridge", "HighRidge Church", "large_church", "Fort Worth", "TX", "US", "highridgechurch.com"),
+  srcLead("src_centralbible", "Central Bible Church", "large_church", "Fort Worth", "TX", "US", "wearecentral.org"),
+  srcLead("src_crosschurch", "Cross Church", "multi_campus_church", "Fort Worth", "TX", "US", "ccdfw.org"),
 ];
