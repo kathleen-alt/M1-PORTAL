@@ -19,41 +19,57 @@ const anthropic = process.env.ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null;
 
-// ── Brand: Market One content pillars ────────────────────────────────────────
-export const PILLARS = [
-  { id: 'capital-markets', name: 'Capital Markets & IPOs', accent: '#3B82F6', blurb: 'Listings, financings, capital raises, exchange moves.' },
-  { id: 'mining-metals', name: 'Mining & Metals', accent: '#F59E0B', blurb: 'Producers, explorers, commodities, drill results.' },
-  { id: 'energy-cleantech', name: 'Energy & Cleantech', accent: '#10B981', blurb: 'Oil & gas, renewables, batteries, the transition.' },
-  { id: 'tech-innovation', name: 'Technology & Innovation', accent: '#8B5CF6', blurb: 'AI, software, semis, frontier tech.' },
-  { id: 'deals-ma', name: 'Deals & M&A', accent: '#EC4899', blurb: 'Mergers, acquisitions, takeovers, strategic stakes.' },
-  { id: 'macro-markets', name: 'Macro & Markets', accent: '#06B6D4', blurb: 'Rates, inflation, indices, the broad tape.' },
-  { id: 'esg-governance', name: 'ESG & Governance', accent: '#22C55E', blurb: 'Sustainability, disclosure, boards, stewardship.' },
-];
-const PILLAR_IDS = PILLARS.map((p) => p.id);
-
-// Per-pillar search terms used to pull top stories for each topic.
-const PILLAR_QUERIES = {
-  'capital-markets': 'IPO OR "initial public offering" OR listing OR "capital raise" OR financing OR prospectus',
-  'mining-metals': 'mining OR gold OR copper OR lithium OR nickel OR silver OR "drill results"',
-  'energy-cleantech': 'energy OR oil OR "natural gas" OR solar OR battery OR renewables OR "energy storage"',
-  'tech-innovation': 'AI OR semiconductor OR chip OR software OR "artificial intelligence" OR technology',
-  'deals-ma': 'acquisition OR merger OR takeover OR "to acquire" OR "all-stock deal" OR buyout',
-  'macro-markets': '"S&P 500" OR Nasdaq OR "Federal Reserve" OR inflation OR "interest rates" OR "Dow Jones"',
-  'esg-governance': 'activist investor OR governance OR "board" OR ESG OR shareholder OR "proxy"',
-};
-const PILLAR_NL = Object.fromEntries(PILLARS.map((p) => [p.id, `${p.name} — ${p.blurb}`]));
-
-// Credible-domain allowlist used for NewsAPI sourcing.
-const SOURCE_ALLOWLIST = [
+// ── Brands ───────────────────────────────────────────────────
+// Select with BRAND=bullionaire (default: marketone). Each brand defines its own
+// pillars, per-pillar search queries, credible-domain allowlist, and theme.
+const COMMON_DOMAINS = [
   'bnnbloomberg.ca', 'reuters.com', 'financialpost.com', 'cnbc.com', 'bloomberg.com',
-  'mining.com', 'kitco.com', 'northernminer.com', 'theglobeandmail.com', 'finance.yahoo.com',
-  'marketbeat.com', 'benzinga.com', 'barrons.com', 'wsj.com', 'investing.com',
-  'stockhouse.com', 'seekingalpha.com',
+  'theglobeandmail.com', 'finance.yahoo.com', 'marketbeat.com', 'benzinga.com',
+  'barrons.com', 'wsj.com', 'investing.com', 'stockhouse.com', 'seekingalpha.com',
 ];
+const BRANDS = {
+  marketone: {
+    id: 'marketone', name: 'Market One', tag: 'Content Intelligence',
+    accent: '#3B82F6', accent2: '#06B6D4', accentSoft: 'rgba(59, 130, 246, 0.14)',
+    pillars: [
+      { id: 'capital-markets', name: 'Capital Markets & IPOs', accent: '#3B82F6', blurb: 'Listings, financings, capital raises, exchange moves.', query: 'IPO OR "initial public offering" OR listing OR "capital raise" OR financing OR prospectus' },
+      { id: 'mining-metals', name: 'Mining & Metals', accent: '#F59E0B', blurb: 'Producers, explorers, commodities, drill results.', query: 'mining OR gold OR copper OR lithium OR nickel OR silver OR "drill results"' },
+      { id: 'energy-cleantech', name: 'Energy & Cleantech', accent: '#10B981', blurb: 'Oil & gas, renewables, batteries, the transition.', query: 'energy OR oil OR "natural gas" OR solar OR battery OR renewables OR "energy storage"' },
+      { id: 'tech-innovation', name: 'Technology & Innovation', accent: '#8B5CF6', blurb: 'AI, software, semis, frontier tech.', query: 'AI OR semiconductor OR chip OR software OR "artificial intelligence" OR technology' },
+      { id: 'deals-ma', name: 'Deals & M&A', accent: '#EC4899', blurb: 'Mergers, acquisitions, takeovers, strategic stakes.', query: 'acquisition OR merger OR takeover OR "to acquire" OR "all-stock deal" OR buyout' },
+      { id: 'macro-markets', name: 'Macro & Markets', accent: '#06B6D4', blurb: 'Rates, inflation, indices, the broad tape.', query: '"S&P 500" OR Nasdaq OR "Federal Reserve" OR inflation OR "interest rates" OR "Dow Jones"' },
+      { id: 'esg-governance', name: 'ESG & Governance', accent: '#22C55E', blurb: 'Sustainability, disclosure, boards, stewardship.', query: 'activist investor OR governance OR "board" OR ESG OR shareholder OR "proxy"' },
+    ],
+    domains: [...COMMON_DOMAINS, 'mining.com', 'kitco.com', 'northernminer.com'],
+    voice: 'Market One, a capital-markets communications firm',
+  },
+  bullionaire: {
+    id: 'bullionaire', name: 'Bullionaire', tag: 'Precious-Metals Intelligence',
+    accent: '#af800b', accent2: '#d0a02f', accentSoft: 'rgba(175, 128, 11, 0.18)',
+    pillars: [
+      { id: 'gold', name: 'Gold', accent: '#E5B80B', blurb: 'Spot, futures, ETFs, price forecasts.', query: 'gold OR bullion OR "gold price" OR "gold ETF" OR "gold futures"' },
+      { id: 'silver-pgms', name: 'Silver & PGMs', accent: '#C6CED8', blurb: 'Silver, platinum, palladium.', query: 'silver OR platinum OR palladium OR PGM OR "silver price"' },
+      { id: 'miners', name: 'Miners & Producers', accent: '#D98A3D', blurb: 'Gold & silver miners, earnings, output.', query: '"gold miner" OR "gold production" OR Newmont OR Barrick OR "Agnico Eagle" OR "mine output"' },
+      { id: 'central-banks', name: 'Central Banks & Reserves', accent: '#7FB2FF', blurb: 'Official-sector buying, reserves, de-dollarization.', query: '"central bank" gold OR "gold reserves" OR "World Gold Council" OR "reserve asset"' },
+      { id: 'macro', name: 'Macro & Rates', accent: '#4FD1C5', blurb: 'Fed, inflation, real yields, the dollar.', query: '"Federal Reserve" OR inflation OR "real yields" OR "US dollar" OR "safe haven"' },
+      { id: 'physical', name: 'Physical & Mints', accent: '#E0A82E', blurb: 'Coins, bars, mints, premiums, demand.', query: '"gold coin" OR "US Mint" OR "gold bar" OR "bullion demand" OR premium' },
+      { id: 'digital-gold', name: 'Digital Gold & Crypto', accent: '#F7931A', blurb: 'Bitcoin as digital gold, tokenized gold, ETF flows.', query: 'bitcoin OR "digital gold" OR "tokenized gold" OR "gold ETF flows" OR crypto' },
+    ],
+    domains: [...COMMON_DOMAINS, 'kitco.com', 'gold.org', 'mining.com', 'coindesk.com', 'coinworld.com', 'coinnews.net'],
+    voice: 'Bullionaire, a precious-metals research and communications firm',
+  },
+};
+
+const BRAND = BRANDS[process.env.BRAND] || BRANDS.marketone;
+export const PILLARS = BRAND.pillars.map(({ query, ...p }) => p);
+const PILLAR_IDS = BRAND.pillars.map((p) => p.id);
+const PILLAR_QUERIES = Object.fromEntries(BRAND.pillars.map((p) => [p.id, p.query]));
+const PILLAR_NL = Object.fromEntries(BRAND.pillars.map((p) => [p.id, `${p.name} — ${p.blurb}`]));
+const SOURCE_ALLOWLIST = BRAND.domains;
 
 const SENTIMENTS = ['positive', 'neutral', 'negative'];
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────
 function requireClaude(res) {
   if (!anthropic) {
     res.status(500).json({
@@ -143,7 +159,7 @@ function dedupe(articles) {
   return out;
 }
 
-// ── Sourcing: NewsAPI path ───────────────────────────────────────────────────
+// ── Sourcing: NewsAPI path ──────────────────────────────────────
 async function fetchFromNewsApi({ query, from, to, page, pageSize }) {
   const params = new URLSearchParams({
     domains: SOURCE_ALLOWLIST.join(','),
@@ -205,7 +221,7 @@ async function classifyArticles(articles) {
     .join('\n\n');
 
   const system =
-    'You are the desk editor for Market One, a capital-markets communications firm. ' +
+    `You are the desk editor for ${BRAND.voice}. ` +
     'Classify each financial/business news item into exactly one content pillar, judge market sentiment, ' +
     'write a tight one-sentence editorial summary, and pull one concrete stat or figure from the item ' +
     '(a price, %, $ amount, or "—" if none is present). Be precise and never invent facts.';
@@ -230,7 +246,7 @@ async function classifyArticles(articles) {
   });
 }
 
-// ── Sourcing: Claude web-search fallback ─────────────────────────────────────
+// ── Sourcing: Claude web-search fallback ────────────────────────────
 async function fetchViaWebSearch({ query, from, to, count }) {
   const dateHint = from && to ? ` published between ${from} and ${to}` : from ? ` published on or after ${from}` : '';
   const topic = query && query.trim() ? query.trim() : 'financial markets, mining, IPOs, M&A, energy, and macro';
@@ -239,13 +255,13 @@ async function fetchViaWebSearch({ query, from, to, count }) {
   const allow = SOURCE_ALLOWLIST.join(', ');
 
   const system =
-    'You are the sourcing desk for Market One, a capital-markets communications firm. ' +
+    `You are the sourcing desk for ${BRAND.voice}. ` +
     'Use the web_search tool to find REAL, recently published business/financial news articles with their exact source URLs. ' +
     `Prefer these credible outlets: ${allow}. Never fabricate URLs, headlines, or facts — only report articles you actually found.`;
 
   const user =
     `Find ${count} distinct, real, recently published news articles about ${topic}${dateHint}. ` +
-    `For each article, classify it into one Market One content pillar, judge market sentiment (positive/neutral/negative), ` +
+    `For each article, classify it into one ${BRAND.name} content pillar, judge market sentiment (positive/neutral/negative), ` +
     `write a one-sentence editorial summary, and pull one concrete stat (price, %, $, or "—").\n\n` +
     `Content pillars:\n${pillarGuide}\n\n` +
     `After searching, respond with ONLY a JSON array (no prose) where each element is:\n` +
@@ -290,7 +306,7 @@ async function fetchViaWebSearch({ query, from, to, count }) {
   return dedupe(articles);
 }
 
-// ── Top stories: ≥ perTopic per pillar ───────────────────────────────────────
+// ── Top stories: ≥ perTopic per pillar ────────────────────────────────
 async function fetchTopByPillarNewsApi({ from, to, perTopic }) {
   const batches = await Promise.all(
     PILLARS.map(async (p) => {
@@ -330,7 +346,7 @@ async function fetchTopByPillarWebSearch({ from, to, perTopic }) {
   return dedupe(batches.flat());
 }
 
-// ── App ──────────────────────────────────────────────────────────────────────
+// ── App ──────────────────────────────────────────────────────
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
@@ -348,6 +364,7 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/config', (_req, res) => {
   res.json({
     pillars: PILLARS,
+    brand: { id: BRAND.id, name: BRAND.name, tag: BRAND.tag, accent: BRAND.accent, accent2: BRAND.accent2, accentSoft: BRAND.accentSoft },
     sourcing: NEWS_API_KEY ? 'newsapi' : 'web-search',
     model: MODEL,
     slackConfigured: Boolean(SLACK_WEBHOOK_URL),
@@ -420,8 +437,8 @@ app.post('/api/analyze', async (req, res) => {
   };
 
   const system =
-    'You are a senior analyst at Market One. Produce a crisp, accurate editorial read on a single news story for ' +
-    'capital-markets clients. Be specific, avoid hype, never invent facts beyond what the source supports.';
+    `You are a senior analyst at ${BRAND.name}. Produce a crisp, accurate editorial read on a single news story for ` +
+    'professional-investor clients. Be specific, avoid hype, never invent facts beyond what the source supports.';
   const user =
     `Analyze this story.\n\nHEADLINE: ${story.title}\nSOURCE: ${story.source || ''} (${story.url || ''})\n` +
     `CONTEXT: ${story.summary || story.description || ''}\n\n` +
@@ -454,7 +471,7 @@ app.post('/api/generate', async (req, res) => {
   const guide = FORMAT_GUIDE[format] || FORMAT_GUIDE.linkedin;
 
   const system =
-    'You write in Market One\'s brand voice: confident, precise, and editorial — capital-markets credible, never hypey. ' +
+    `You write in ${BRAND.name}'s brand voice: confident, precise, and editorial — credible for professional investors, never hypey. ` +
     'Compliance guardrails: no investment advice, no price targets or buy/sell calls, no guarantees of returns, ' +
     'no fabricated figures. Attribute facts to the source. Write copy a regulated communications firm could publish.';
   const user =
@@ -485,7 +502,7 @@ app.post('/api/refine', async (req, res) => {
   if (!text) return res.status(400).json({ error: 'text is required' });
 
   const system =
-    'You are Market One\'s copy editor. Refine the given copy while keeping its meaning and the brand voice ' +
+    `You are ${BRAND.name}'s copy editor. Refine the given copy while keeping its meaning and the brand voice ` +
     '(confident, precise, editorial, compliant — no advice, no price targets, no invented figures). ' +
     'Return only the revised copy.';
   const user = `Instruction: ${instruction || 'Tighten and improve clarity and impact.'}\n\nCopy:\n${text}`;
@@ -524,7 +541,7 @@ app.post('/api/slack', async (req, res) => {
   }
 });
 
-// ── Serve the built client in production ─────────────────────────────────────
+// ── Serve the built client in production ───────────────────────────────
 const clientDist = path.resolve(__dirname, '../client/dist');
 app.use(express.static(clientDist));
 app.get('*', (req, res, next) => {
@@ -535,7 +552,7 @@ app.get('*', (req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n  Market One · Content Intelligence Portal API`);
+  console.log(`\n  ${BRAND.name} · Content Intelligence Portal API`);
   console.log(`  → http://localhost:${PORT}`);
   console.log(`  → model: ${MODEL}`);
   console.log(`  → sourcing: ${NEWS_API_KEY ? 'NewsAPI + Claude classification' : 'Claude web-search'}`);
