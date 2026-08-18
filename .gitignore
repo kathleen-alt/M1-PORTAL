@@ -7,3 +7,7 @@ dist/
 client/dist/
 .vite/
 coverage/
+
+# Generated standalone demo artifacts (never commit)
+/MarketOne-Portal-DEMO.html
+/Bullionaire-Portal-DEMO.html
