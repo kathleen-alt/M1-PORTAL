@@ -697,7 +697,8 @@ function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEye
   const footerY = dims.h - M;
   const hasStat = showStat && stat && stat !== '—';
   const statH = 70;
-  let contentBottom = footerY - 64;
+  // Reserve a tall footer band so the logo keeps clear space (brand clearance rule).
+  let contentBottom = footerY - 104;
   let statTop = null;
   if (hasStat) { statTop = contentBottom - statH; contentBottom = statTop - 28; }
   const topLimit = M + (showEyebrow ? 92 : 40);
