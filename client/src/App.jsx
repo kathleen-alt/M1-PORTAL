@@ -701,7 +701,8 @@ function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEye
   let contentBottom = footerY - 104;
   let statTop = null;
   if (hasStat) { statTop = contentBottom - statH; contentBottom = statTop - 28; }
-  const topLimit = M + (showEyebrow ? 92 : 40);
+  const eyebrowSize = isWide ? 30 : 28;
+  const topLimit = M + (showEyebrow ? 108 : 40);
   const availH = Math.max(120, contentBottom - topLimit);
   const maxHead = isWide ? 76 : dims.h > 1400 ? 84 : 72;
   const charW = 0.53;
@@ -721,8 +722,8 @@ function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEye
   const lines = fit.ls;
   const headlineSize = fit.fs;
   const firstBaseline = contentBottom - (lines.length - 1) * fit.lh;
-  const eyebrowY = firstBaseline - headlineSize - 24;
-  const ruleY = eyebrowY - 30;
+  const eyebrowY = firstBaseline - headlineSize - 30;
+  const ruleY = eyebrowY - eyebrowSize - 22;
   const eyebrowMax = Math.max(8, Math.floor(availW / 22));
   const statW = hasStat ? Math.min(availW, 44 + String(stat).length * 26) : 0;
 
@@ -746,7 +747,7 @@ function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEye
       <rect width={dims.w} height={dims.h} fill={`url(#ov-${uid})`} />
       <rect x={M} y={ruleY} width="64" height="6" rx="3" fill={accent} />
       {showEyebrow && (
-        <text x={M} y={eyebrowY} fill={accent} fontFamily="Franklin Gothic, Arial, sans-serif" fontSize={isWide ? 30 : 28} fontWeight="700" letterSpacing="4">
+        <text x={M} y={eyebrowY} fill={accent} fontFamily="Franklin Gothic, Arial, sans-serif" fontSize={eyebrowSize} fontWeight="700" letterSpacing="4">
           {eb.slice(0, eyebrowMax)}
         </text>
       )}
