@@ -60,6 +60,15 @@ npm start                   # server serves the API + the built client on :3001
 | `/api/refine` | POST | Refine arbitrary copy (Studio + graphic editor) |
 | `/api/slack` | POST | Post an alert to Slack if `SLACK_WEBHOOK_URL` is set |
 
+## Brand editions
+
+The same engine ships two brands, selected by the `BRAND` env var:
+
+- `BRAND=marketone` (default) — Market One, 7 capital-markets content pillars.
+- `BRAND=bullionaire` — Bullionaire, a precious-metals edition with a gold theme and 7 bullion pillars (Gold, Silver & PGMs, Miners & Producers, Central Banks & Reserves, Macro & Rates, Physical & Mints, Digital Gold & Crypto).
+
+Set it in `.env` (server) — pillars, per-pillar search queries, allowlist domains, theme colours, and the AI brand voice all switch automatically. In demo mode the client picks the brand from `window.__M1_BRAND__` (set in standalone builds) and themes itself from the server's `/api/config` in live mode.
+
 ## Features
 
 - **Live newsroom** with Refresh and Load more — real, de-duplicated, sourced stories segmented by 7 pillars.
