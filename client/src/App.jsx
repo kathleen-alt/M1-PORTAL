@@ -1,10 +1,14 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { demo, initialDemoFromUrl } from './demo';
+import { getBrand, applyTheme, BRANDS } from './brand';
 
-// Seed demo mode from the URL (?demo=1) before any API call runs.
+// Seed demo mode from the URL (?demo=1) before any API call runs, and paint the
+// active brand's theme before first render.
 demo.set(initialDemoFromUrl());
+applyTheme(getBrand());
+try { document.title = `${getBrand().name} · Content Intelligence Portal`; } catch { /* ignore */ }
 
-// ── API helpers ──────────────────────────────────────────────────────────────
+// ── API helpers ────────────────────────────────────────────
 async function jsonFetch(url, opts) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
@@ -24,15 +28,7 @@ function post(body) {
   return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 }
 
-const FALLBACK_PILLARS = [
-  { id: 'capital-markets', name: 'Capital Markets & IPOs', accent: '#3B82F6' },
-  { id: 'mining-metals', name: 'Mining & Metals', accent: '#F59E0B' },
-  { id: 'energy-cleantech', name: 'Energy & Cleantech', accent: '#10B981' },
-  { id: 'tech-innovation', name: 'Technology & Innovation', accent: '#8B5CF6' },
-  { id: 'deals-ma', name: 'Deals & M&A', accent: '#EC4899' },
-  { id: 'macro-markets', name: 'Macro & Markets', accent: '#06B6D4' },
-  { id: 'esg-governance', name: 'ESG & Governance', accent: '#22C55E' },
-];
+const FALLBACK_PILLARS = getBrand().pillars;
 
 const FORMATS = [
   { id: 'linkedin', label: 'LinkedIn' },
@@ -54,7 +50,28 @@ function timeAgo(iso) {
   return `${Math.round(d / 86400)}d ago`;
 }
 
-// ── Root ─────────────────────────────────────────────────────────────────────
+// Brand mark — the brand's logo icon (or a coin emblem) + wordmark.
+function BrandMark() {
+  const b = getBrand();
+  return (
+    <div className="brand">
+      {b.icon ? (
+        <svg width="30" height="30" viewBox={b.icon.viewBox} aria-hidden="true">
+          <path d={b.icon.path} fill={b.accent} fillRule="evenodd" />
+        </svg>
+      ) : (
+        <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="14" fill="none" stroke={b.accent} strokeWidth="3" />
+          <circle cx="16" cy="16" r="5" fill={b.accent2} />
+        </svg>
+      )}
+      <span className="brand-name" style={b.wordmarkColor ? { color: b.wordmarkColor } : undefined}>{b.name}</span>
+      <span className="tag">{b.tag}</span>
+    </div>
+  );
+}
+
+// ── Root ──────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab] = useState('Dashboard');
   const [pillars, setPillars] = useState(FALLBACK_PILLARS);
@@ -90,6 +107,7 @@ export default function App() {
     try {
       const c = await api.config();
       if (c.pillars?.length) setPillars(c.pillars);
+      if (c.brand) { applyTheme(BRANDS[c.brand.id] || c.brand); try { document.title = `${c.brand.name} · Content Intelligence Portal`; } catch { /* ignore */ } }
       setSourcing(c.sourcing);
       setSlackConfigured(Boolean(c.slackConfigured));
       // Auto-fall back to demo when the server has no Anthropic key configured.
@@ -188,10 +206,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <img src="/wordmark.svg" alt="Market One" />
-          <span className="tag">Content Intelligence</span>
-        </div>
+        <BrandMark />
         <nav className="nav">
           {TABS.map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t}</button>
@@ -286,7 +301,7 @@ function dedupeById(arr) {
   return arr.filter((a) => (seen.has(a.id) ? false : seen.add(a.id)));
 }
 
-// ── Dashboard ────────────────────────────────────────────────────────────────
+// ── Dashboard ──────────────────────────────────────────────
 function Dashboard({ articles, pillars, pillarById, statuses, calendar, onGoNewsroom }) {
   const total = articles.length;
   const approved = Object.values(statuses).filter((s) => s === 'approved').length;
@@ -303,7 +318,7 @@ function Dashboard({ articles, pillars, pillarById, statuses, calendar, onGoNews
       <div className="page-head">
         <div>
           <h1>Newsroom dashboard</h1>
-          <p>A live read on what’s breaking across Market One’s content pillars — every story sourced and linked to its original.</p>
+          <p>A live read on what’s breaking across {pillars.length ? '' : ''}your content pillars — every story sourced and linked to its original.</p>
         </div>
         <button className="btn primary" onClick={onGoNewsroom}>Open newsroom →</button>
       </div>
@@ -357,7 +372,7 @@ function Dashboard({ articles, pillars, pillarById, statuses, calendar, onGoNews
   );
 }
 
-// ── Newsroom ─────────────────────────────────────────────────────────────────
+// ── Newsroom ─────────────────────────────────────────────
 function Newsroom(props) {
   const { articles, allArticles, loading, error, hasMore, query, from, to, activePillar, sentiment, pillars, pillarById,
     setQuery, setFrom, setTo, setActivePillar, setSentiment, onSearch, onRefresh, onLoadMore, onOpen, statuses } = props;
@@ -476,7 +491,7 @@ function StoryCard({ story, pillar, status, onOpen }) {
   );
 }
 
-// ── Studio ───────────────────────────────────────────────────────────────────
+// ── Studio ────────────────────────────────────────────────
 function Studio({ story, pillarById, status, onStatus, onPublish, onSchedule, onToast, onBack }) {
   const [analysis, setAnalysis] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -628,7 +643,7 @@ function Studio({ story, pillarById, status, onStatus, onPublish, onSchedule, on
   );
 }
 
-// ── Branded graphic ──────────────────────────────────────────────────────────
+// ── Branded graphic ─────────────────────────────────────────
 const GRAPHIC_FORMATS = {
   square: { w: 1080, h: 1080, label: 'Square' },
   portrait: { w: 1080, h: 1350, label: 'Portrait' },
@@ -669,11 +684,13 @@ function wrapText(text, maxChars, maxLines = 6) {
 // Reusable branded-graphic SVG (used by the Studio editor and the post preview).
 function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEyebrow = true, showStat = true, showSource = true, headline, eyebrow, bgImage = null, innerRef }) {
   const uid = useId().replace(/:/g, '');
-  const accent = pillar?.accent || '#3B82F6';
+  const brand = getBrand();
+  const displayFont = brand.fonts?.display || "Georgia, 'Superior Title', serif";
+  const accent = pillar?.accent || brand.accent || '#3B82F6';
   const dims = GRAPHIC_FORMATS[fmt] || GRAPHIC_FORMATS.square;
   const isWide = dims.w >= dims.h;
   const head = (headline ?? story?.title) || '';
-  const eb = String(eyebrow ?? pillar?.name ?? 'Market One').toUpperCase();
+  const eb = String(eyebrow ?? pillar?.name ?? brand.name).toUpperCase();
   const stat = story?.stat;
   const M = isWide ? 84 : 76;
   const availW = dims.w - M * 2;
@@ -732,7 +749,7 @@ function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEye
           {eb.slice(0, eyebrowMax)}
         </text>
       )}
-      <text x={M} y={firstBaseline} fill="#ffffff" fontFamily="Georgia, 'Superior Title', serif" fontSize={headlineSize} fontWeight="700" letterSpacing="-1">
+      <text x={M} y={firstBaseline} fill="#ffffff" fontFamily={displayFont} fontSize={headlineSize} fontWeight="700" letterSpacing="-1">
         {lines.map((ln, i) => (
           <tspan key={i} x={M} dy={i === 0 ? 0 : fit.lh}>{ln}</tspan>
         ))}
@@ -740,13 +757,14 @@ function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEye
       {hasStat && (
         <g>
           <rect x={M} y={statTop} width={statW} height={statH} rx="12" fill={accent} fillOpacity="0.16" stroke={accent} strokeOpacity="0.5" />
-          <text x={M + 24} y={statTop + statH / 2 + 15} fill={accent} fontFamily="Georgia, serif" fontSize="42" fontWeight="700">{String(stat).slice(0, 24)}</text>
+          <text x={M + 24} y={statTop + statH / 2 + 15} fill={accent} fontFamily={displayFont} fontSize="42" fontWeight="700">{String(stat).slice(0, 24)}</text>
         </g>
       )}
       <g>
-        <path d={`M${M} ${footerY + 6} V${footerY - 30} l 16 26 l 16 -26 V${footerY + 6}`} fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx={M + 46} cy={footerY - 26} r="6" fill={accent} />
-        <text x={M + 60} y={footerY + 4} fill="#ffffff" fontFamily="Georgia, serif" fontSize="36" fontWeight="700">Market<tspan fill={accent}>One</tspan></text>
+        {brand.icon
+          ? <g transform={`translate(${M}, ${footerY - 34}) scale(0.36)`}><path d={brand.icon.path} fill="#ffffff" fillRule="evenodd" /></g>
+          : <><circle cx={M + 15} cy={footerY - 12} r="15" fill="none" stroke="#ffffff" strokeWidth="4" /><circle cx={M + 15} cy={footerY - 12} r="5" fill={accent} /></>}
+        <text x={M + 46} y={footerY + 2} fill="#ffffff" fontFamily={displayFont} fontSize="34" fontWeight="700">{brand.name}</text>
       </g>
       {showSource && (
         <text x={dims.w - M} y={footerY + 4} textAnchor="end" fill="#c4ccde" fontFamily="Franklin Gothic, Arial, sans-serif" fontSize="26" letterSpacing="1">
@@ -766,12 +784,12 @@ function BrandedGraphic({ story, pillar, onToast }) {
   const [showSource, setShowSource] = useState(true);
   const [bgImage, setBgImage] = useState(null);
   const [headline, setHeadline] = useState(story.title);
-  const [eyebrow, setEyebrow] = useState((pillar?.name || 'Market One').toUpperCase());
+  const [eyebrow, setEyebrow] = useState((pillar?.name || getBrand().name).toUpperCase());
   const [refining, setRefining] = useState(false);
 
   useEffect(() => {
     setHeadline(story.title);
-    setEyebrow((pillar?.name || 'Market One').toUpperCase());
+    setEyebrow((pillar?.name || getBrand().name).toUpperCase());
   }, [story.id, pillar?.name]);
 
   function onUpload(e) {
@@ -799,7 +817,7 @@ function BrandedGraphic({ story, pillar, onToast }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `marketone-${fmt}.svg`;
+    a.download = `${getBrand().id}-${fmt}.svg`;
     a.click();
     URL.revokeObjectURL(url);
     onToast('Graphic downloaded (SVG)');
@@ -867,7 +885,7 @@ function Toggle({ label, on, set }) {
   );
 }
 
-// ── Calendar ─────────────────────────────────────────────────────────────────
+// ── Calendar ─────────────────────────────────────────────
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -1002,7 +1020,9 @@ function Modal({ title, children, onClose }) {
 }
 
 function PostPreview({ item, story, pillar, onSetPublished }) {
-  const handle = '@MarketOne';
+  const b = getBrand();
+  const handle = `@${b.name.replace(/\s+/g, '')}`;
+  const initials = b.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
   const graphicFmt = item.channel === 'X / Twitter' || item.channel === 'Blog' ? 'link' : 'square';
   const body = item.copy || story?.summary || story?.title || '';
   return (
@@ -1010,9 +1030,9 @@ function PostPreview({ item, story, pillar, onSetPublished }) {
       <div className="preview-left">
         <div className="post-card">
           <div className="post-card-head">
-            <div className="av">M1</div>
+            <div className="av">{initials}</div>
             <div>
-              <b>Market One</b>
+              <b>{b.name}</b>
               <div className="muted" style={{ fontSize: 12 }}>{handle} · {item.channel} · {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
             </div>
             <span className={`status ${item.published ? 'published' : 'draft'}`} style={{ marginLeft: 'auto' }}>{item.published ? 'published' : 'scheduled'}</span>
@@ -1038,8 +1058,9 @@ function PostPreview({ item, story, pillar, onSetPublished }) {
   );
 }
 
-// ── Slack feed ───────────────────────────────────────────────────────────────
+// ── Slack feed ──────────────────────────────────────────────
 function SlackFeed({ feed, configured }) {
+  const initials = getBrand().name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
   return (
     <>
       <div className="page-head">
@@ -1047,7 +1068,7 @@ function SlackFeed({ feed, configured }) {
           <h1>Slack alerts</h1>
           <p>Approval and publish events post here. {configured ? 'A real webhook is configured — alerts also post to your channel.' : 'Set SLACK_WEBHOOK_URL in .env to also post to a real #channel.'}</p>
         </div>
-        <span className="src-chip"><span className={`dot ${configured ? '' : 'warn'}`} />{configured ? '#m1-newsroom · live' : 'in-app only'}</span>
+        <span className="src-chip"><span className={`dot ${configured ? '' : 'warn'}`} />{configured ? '#newsroom · live' : 'in-app only'}</span>
       </div>
       {feed.length === 0 ? (
         <div className="empty">No alerts yet. Approve or publish a story to trigger one.</div>
@@ -1055,7 +1076,7 @@ function SlackFeed({ feed, configured }) {
         <div className="slack-feed">
           {feed.map((m) => (
             <div className="panel slack-msg" key={m.id}>
-              <div className="av">M1</div>
+              <div className="av">{initials}</div>
               <div>
                 <div className="body" dangerouslySetInnerHTML={{ __html: mdLite(m.text) }} />
                 <div className="t">{timeAgo(m.at)}</div>
