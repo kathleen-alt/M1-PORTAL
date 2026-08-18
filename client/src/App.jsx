@@ -57,7 +57,7 @@ function BrandMark() {
     <div className="brand">
       {b.icon ? (
         <svg width="30" height="30" viewBox={b.icon.viewBox} aria-hidden="true">
-          <path d={b.icon.path} fill={b.accent} fillRule="evenodd" />
+          <path d={b.icon.path} fill={b.accent} fillRule={b.icon.fillRule || 'evenodd'} />
         </svg>
       ) : (
         <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
@@ -762,7 +762,7 @@ function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEye
       )}
       <g>
         {brand.icon
-          ? <g transform={`translate(${M}, ${footerY - 34}) scale(0.36)`}><path d={brand.icon.path} fill="#ffffff" fillRule="evenodd" /></g>
+          ? <g transform={`translate(${M}, ${footerY - 34}) scale(${34 / (brand.icon.h || 100)})`}><path d={brand.icon.path} fill="#ffffff" fillRule={brand.icon.fillRule || 'evenodd'} /></g>
           : <><circle cx={M + 15} cy={footerY - 12} r="15" fill="none" stroke="#ffffff" strokeWidth="4" /><circle cx={M + 15} cy={footerY - 12} r="5" fill={accent} /></>}
         <text x={M + 46} y={footerY + 2} fill="#ffffff" fontFamily={displayFont} fontSize="34" fontWeight="700">{brand.name}</text>
       </g>

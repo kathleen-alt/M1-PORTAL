@@ -8,15 +8,16 @@
 // type, add @font-face rules for the licensed Proxima Nova in styles.css and set
 // the `fonts` below to 'Proxima Nova'.
 
-// Bullionaire "B" icon — recreated from the guidelines as SVG (evenodd counters
-// are transparent so it sits on any background). Replace with the official vector
-// for production per the brand guidelines ("never re-create the brand logo").
+// Bullionaire "B" icon — the OFFICIAL logo vector, extracted directly from the
+// brand-guidelines PDF (icon page). Nonzero winding; counters are part of the path.
 const BULLIONAIRE_ICON = {
-  viewBox: '0 0 100 100',
+  viewBox: '0 0 225.12 216',
+  w: 225.12,
+  h: 216,
+  fillRule: 'nonzero',
   path:
-    'M30 14 L58 14 C80 14 80 48 44 48 L44 52 C96 52 96 92 44 92 L30 92 L30 58 L10 58 L30 46 Z ' +
-    'M48 24 L56 24 C67 24 67 40 56 40 L48 40 Z ' +
-    'M48 60 L58 60 C74 60 74 84 58 84 L48 84 Z',
+    'M165.87 64.49 C165.87 80.53 152.6 87.32 131.62 87.32 L87.8 87.32 L87.8 41.65 L134.71 41.65 C154.76 41.65 165.87 49.68 165.87 63.87 L165.87 64.49 ' +
+    'M184.7 103.06 C200.12 94.42 213.08 80.84 213.08 56.47 L213.08 55.85 C213.08 21.91 185.93 0.0 141.8 0.0 L41.65 0.0 L41.56 0.0 L41.52 0.0 L0.0 0.15 L41.52 41.52 L41.52 87.32 L0.0 87.47 L87.8 174.41 L87.8 126.82 L142.73 126.82 C167.11 126.82 177.91 135.77 177.91 150.27 L177.91 150.89 C177.91 166.94 165.26 174.34 144.27 174.34 L42.43 174.49 L0.77 174.49 L42.43 216.0 L144.27 216.0 C193.03 216.0 225.12 196.25 225.12 156.75 L225.12 156.14 C225.12 127.13 209.69 112.63 184.7 103.06',
 };
 
 const MO_SANS = "'Franklin Gothic', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
