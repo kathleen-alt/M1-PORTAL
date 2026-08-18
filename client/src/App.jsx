@@ -760,12 +760,18 @@ function PostGraphic({ story, pillar, fmt = 'square', gradient = 'soft', showEye
           <text x={M + 24} y={statTop + statH / 2 + 15} fill={accent} fontFamily={displayFont} fontSize="42" fontWeight="700">{String(stat).slice(0, 24)}</text>
         </g>
       )}
-      <g>
-        {brand.icon
-          ? <g transform={`translate(${M}, ${footerY - 34}) scale(${34 / (brand.icon.h || 100)})`}><path d={brand.icon.path} fill="#ffffff" fillRule={brand.icon.fillRule || 'evenodd'} /></g>
-          : <><circle cx={M + 15} cy={footerY - 12} r="15" fill="none" stroke="#ffffff" strokeWidth="4" /><circle cx={M + 15} cy={footerY - 12} r="5" fill={accent} /></>}
-        <text x={M + 46} y={footerY + 2} fill="#ffffff" fontFamily={displayFont} fontSize="34" fontWeight="700">{brand.name}</text>
-      </g>
+      {brand.icon ? (
+        // Just the brand's B mark in the footer (no wordmark).
+        <g transform={`translate(${M}, ${footerY - 44}) scale(${46 / (brand.icon.h || 100)})`}>
+          <path d={brand.icon.path} fill="#ffffff" fillRule={brand.icon.fillRule || 'evenodd'} />
+        </g>
+      ) : (
+        <g>
+          <circle cx={M + 15} cy={footerY - 12} r="15" fill="none" stroke="#ffffff" strokeWidth="4" />
+          <circle cx={M + 15} cy={footerY - 12} r="5" fill={accent} />
+          <text x={M + 46} y={footerY + 2} fill="#ffffff" fontFamily={displayFont} fontSize="34" fontWeight="700">{brand.name}</text>
+        </g>
+      )}
       {showSource && (
         <text x={dims.w - M} y={footerY + 4} textAnchor="end" fill="#c4ccde" fontFamily="Franklin Gothic, Arial, sans-serif" fontSize="26" letterSpacing="1">
           Source: {(story?.source || '').slice(0, 26)}
