@@ -8,8 +8,13 @@
 
 import { get, getJson, readOverride, parseCsv } from '../http.js';
 
+// Tried in order. The listed-companies page is the current public directory;
+// the rest are older shapes kept as fallbacks because the CSE has moved this
+// endpoint more than once.
 const CANDIDATES = (process.env.CSE_LISTINGS_URLS ||
   [
+    'https://thecse.com/listing/listed-companies/',
+    'https://thecse.com/wp-json/cse/v1/listings?per_page=5000',
     'https://thecse.com/wp-content/plugins/cse-listings/api/listings.json',
     'https://api.thecse.com/api/v1/listings?per_page=5000',
     'https://thecse.com/en/listings.csv',
@@ -46,6 +51,40 @@ function firstRecordArray(data) {
   return nested || [];
 }
 
+/**
+ * Read an HTML listings table into row objects.
+ *
+ * The public directory page renders a table rather than serving JSON, and the
+ * page is frequently the only route that answers, so it is worth parsing
+ * directly instead of treating an HTML response as a failure.
+ */
+export function parseHtmlTable(html) {
+  const strip = (h) => h
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  for (const table of html.match(/<table[\s\S]*?<\/table>/gi) || []) {
+    const rows = table.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+    if (rows.length < 2) continue;
+
+    const header = (rows[0].match(/<t[hd][\s\S]*?<\/t[hd]>/gi) || []).map(strip);
+    if (!header.some((h) => /symbol|ticker/i.test(h))) continue;
+
+    const out = [];
+    for (const r of rows.slice(1)) {
+      const cells = (r.match(/<t[hd][\s\S]*?<\/t[hd]>/gi) || []).map(strip);
+      if (cells.length < 2) continue;
+      out.push(Object.fromEntries(header.map((h, i) => [h, cells[i] ?? ''])));
+    }
+    if (out.length) return out;
+  }
+  return [];
+}
+
 export async function fetchUniverse() {
   const override = await readOverride('cse.csv');
   if (override) return parseCsv(override).map(normalize).filter(Boolean);
@@ -53,9 +92,21 @@ export async function fetchUniverse() {
   const errors = [];
   for (const url of CANDIDATES) {
     try {
-      const rows = url.endsWith('.csv')
-        ? parseCsv(await get(url, { cacheMs: 24 * 3600e3 }))
-        : firstRecordArray(await getJson(url, { cacheMs: 24 * 3600e3 }));
+      let rows;
+      if (url.endsWith('.csv')) {
+        rows = parseCsv(await get(url, { cacheMs: 24 * 3600e3 }));
+      } else {
+        const body = await get(url, { cacheMs: 24 * 3600e3 });
+        if (/^\s*[[{]/.test(body)) {
+          rows = firstRecordArray(JSON.parse(body));
+        } else {
+          rows = parseHtmlTable(body);
+          if (!rows.length) {
+            errors.push(`${url}: no listings table found in HTML`);
+            continue;
+          }
+        }
+      }
       const mapped = rows.map(normalize).filter(Boolean);
       if (mapped.length) return mapped;
       errors.push(`${url}: parsed 0 rows`);
@@ -66,7 +117,7 @@ export async function fetchUniverse() {
 
   const err = new Error(
     `No CSE listing source responded. Tried:\n  ${errors.join('\n  ')}\n` +
-      'Download the listings file from https://thecse.com/en/listings and save it as ' +
+      'Download the listings file from https://thecse.com/listing/listed-companies/ and save it as ' +
       'server/data/universe/cse.csv, or set CSE_LISTINGS_URLS.',
   );
   err.code = 'CSE_UNAVAILABLE';
