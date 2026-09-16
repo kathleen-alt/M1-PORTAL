@@ -7,12 +7,33 @@
 // otcmarkets.com/research/stock-screener has a "Download" button — drop that
 // file at server/data/universe/otc.csv and this adapter uses it instead.
 
-import { getJson, readOverride, parseCsv } from '../http.js';
+import { get, getJson, readOverride, parseCsv } from '../http.js';
 
 const BASE = process.env.OTC_API_BASE || 'https://backend.otcmarkets.com/otcapi';
 const PAGE_SIZE = 500;
 
 const TIERS = { OTCQX: 'OTCQX', OTCQB: 'OTCQB', PINK: 'Pink', EXPERT: 'Expert Market' };
+
+const STATUS_PAGE = 'https://www.otcmarkets.com/research/stock-screener';
+const MAINTENANCE = /temporarily unavailable|maintenance in progress|scheduled maintenance/i;
+
+/**
+ * Is the public site in maintenance?
+ *
+ * While OTC Markets is down its gateway unmaps the API routes, so the screener
+ * answers 403/404 exactly as it would if the endpoint had been moved. Reporting
+ * the raw status sends whoever reads it hunting for a new endpoint that does
+ * not exist, so on failure we check the public page for the maintenance banner
+ * and say which of the two it is. Best effort only — never mask the original
+ * error with one from this probe.
+ */
+async function inMaintenance() {
+  try {
+    return MAINTENANCE.test(await get(STATUS_PAGE, { cacheMs: 5 * 60e3, retries: 0, timeoutMs: 10000 }));
+  } catch {
+    return false;
+  }
+}
 
 function tierOf(row) {
   const raw = String(row.tierName || row.tierCode || row.tierDisplayName || row.Tier || '').toUpperCase();
@@ -51,10 +72,24 @@ export async function fetchUniverse({ tiers = ['OTCQX', 'OTCQB'], maxPages = 40 
   for (let page = 1; page <= maxPages; page += 1) {
     const url =
       `${BASE}/market-data/stock-screener?page=${page}&pageSize=${PAGE_SIZE}&sortField=symbol&sortOrder=asc`;
-    const data = await getJson(url, {
-      cacheMs: 12 * 3600e3,
-      headers: { Referer: 'https://www.otcmarkets.com/', Origin: 'https://www.otcmarkets.com' },
-    });
+    let data;
+    try {
+      data = await getJson(url, {
+        cacheMs: 12 * 3600e3,
+        headers: { Referer: 'https://www.otcmarkets.com/', Origin: 'https://www.otcmarkets.com' },
+      });
+    } catch (err) {
+      if (page === 1 && (await inMaintenance())) {
+        const wrapped = new Error(
+          `OTC Markets is in scheduled maintenance (${err.message}). The endpoint is unchanged — ` +
+            'retry when the site is back, or drop the screener export at server/data/universe/otc.csv ' +
+            'to run the sweep meanwhile.',
+        );
+        wrapped.code = 'OTC_MAINTENANCE';
+        throw wrapped;
+      }
+      throw err;
+    }
 
     const records = data?.records || data?.stocks || [];
     if (!records.length) break;

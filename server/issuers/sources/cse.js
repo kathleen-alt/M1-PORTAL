@@ -1,39 +1,60 @@
 // Canadian Securities Exchange.
 //
-// The CSE publishes its listed issuers as a downloadable file and serves the
-// same data to its own listings page. Endpoint shapes have moved around more
-// than once, so we try the known JSON/CSV routes in order and fall back to the
-// override file — `thecse.com/en/listings` has a "Download" link that produces
-// exactly what `server/data/universe/cse.csv` expects.
+// The CSE serves its listed issuers from the JSON endpoint its own listings
+// page calls client-side (`/api/webapi/listed-companies/`). The directory page
+// itself is no longer scrapeable: it ships a table shell and fills it in from
+// that endpoint after hydration, so the HTML arrives with a header row and
+// nothing else. Endpoint shapes have moved more than once, so we try the known
+// JSON/CSV routes in order and fall back to the override file — the listings
+// page has a "Download" link producing what `server/data/universe/cse.csv`
+// expects.
 
 import { get, getJson, readOverride, parseCsv } from '../http.js';
 
-// Tried in order. The listed-companies page is the current public directory;
-// the rest are older shapes kept as fallbacks because the CSE has moved this
-// endpoint more than once.
+// Tried in order. The webapi route is what the live directory page calls; the
+// rest are older shapes kept as fallbacks because the CSE has moved this
+// endpoint more than once. The HTML directory stays last: it only yields rows
+// if the CSE ever server-renders that table again.
 const CANDIDATES = (process.env.CSE_LISTINGS_URLS ||
   [
-    'https://thecse.com/listing/listed-companies/',
+    'https://thecse.com/api/webapi/listed-companies/',
     'https://thecse.com/wp-json/cse/v1/listings?per_page=5000',
     'https://thecse.com/wp-content/plugins/cse-listings/api/listings.json',
     'https://api.thecse.com/api/v1/listings?per_page=5000',
     'https://thecse.com/en/listings.csv',
+    'https://thecse.com/listing/listed-companies/',
   ].join(',')
 ).split(',').map((s) => s.trim()).filter(Boolean);
+
+// Only common equity in good standing is a prospect. The webapi feed carries a
+// handful of debentures and ETFs, plus names that are suspended, halted or gone
+// — matching how the NASDAQ feed drops test issues and non-equity securities.
+// Both fields are absent from the CSV override shape, so each filter applies
+// only when its field is actually present.
+const TRADEABLE_STATUS = /^active$/i;
+const EQUITY_TYPE = /^equity$/i;
 
 function normalize(r) {
   const symbol = String(
     r.symbol ?? r.Symbol ?? r.ticker ?? r.Ticker ?? r.stock_symbol ?? r['Stock Symbol'] ?? '',
   ).trim().toUpperCase();
   const name = String(
+    r.security_name ?? r['Security Name'] ??
     r.name ?? r.Name ?? r.company ?? r.Company ?? r.company_name ?? r['Company Name'] ?? r.issuer ?? '',
   ).trim();
   if (!symbol || !name) return null;
+
+  const status = String(r.status ?? r.Status ?? '').trim();
+  if (status && !TRADEABLE_STATUS.test(status)) return null;
+  const type = String(r.security_type ?? r['Security Type'] ?? '').trim();
+  if (type && !EQUITY_TYPE.test(type)) return null;
+
+  const tier = r.tier ?? r.Tier ?? null;
   return {
     symbol,
     name,
     exchange: 'CSE',
-    tier: null,
+    tier: tier == null || tier === '' ? null : String(tier),
     sectorHint: String(r.sector ?? r.Sector ?? r.industry ?? r.Industry ?? '').trim() || null,
     country: 'CA',
     source: 'cse',
