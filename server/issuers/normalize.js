@@ -135,6 +135,64 @@ export function applySiteScan(issuer, scan, signals) {
   };
 }
 
+/**
+ * Fold a press-release archive scan into a record.
+ *
+ * Release footers outrank the website scan when they disagree: a name printed
+ * on the releases themselves, repeatedly, is the "footer-verified" standard the
+ * POC sheet holds itself to. The absence of an agency only counts as evidence
+ * once enough releases have actually been read -- concluding "runs IR in-house"
+ * from two releases would be guessing.
+ */
+export function applyReleaseScan(issuer, scan, signals) {
+  if (!scan) return issuer;
+
+  const READ_ENOUGH = 3;
+  const next = {
+    ...issuer,
+    releaseCount: signals.releaseCount ?? 0,
+    releasesLast12m: signals.releasesLast12m ?? null,
+    releasesLast90d: signals.releasesLast90d ?? null,
+    latestRelease: signals.latestRelease ?? null,
+    latestReleaseTitle: signals.latestReleaseTitle ?? null,
+    primaryNewswire: signals.primaryNewswire ?? null,
+    releaseNewswires: signals.releaseNewswires ?? [],
+    releaseAgencies: signals.releaseAgencies ?? [],
+    financingCount12m: signals.financingCount12m ?? null,
+    latestFinancing: signals.latestFinancing ?? null,
+    irHireAnnouncement: signals.irHireAnnouncement ?? null,
+    catalystCount12m: signals.catalystCount12m ?? null,
+    latestCatalyst: signals.latestCatalyst ?? null,
+    undervaluedQuote: signals.undervaluedQuote ?? null,
+    newsReaction: signals.newsReaction ?? null,
+    // Keep a trimmed archive for the timeline in the UI.
+    releases: (scan.releases || []).slice(0, 40).map((r) => ({
+      date: r.date, title: r.title, url: r.url,
+      newswires: r.newswires, agencies: r.agencies,
+      isFinancing: r.isFinancing, isIrHire: r.isIrHire, isCatalyst: r.isCatalyst,
+    })),
+    releaseScanAt: scan.scannedAt,
+    releaseScanVia: scan.discoveredVia,
+    sources: { ...issuer.sources, releases: scan.website },
+  };
+
+  if (signals.footerVerifiedAgency) {
+    next.hasIncumbentAgency = true;
+    next.incumbentAgency = signals.footerVerifiedAgency;
+    next.incumbentEvidence = `release footer${signals.releaseAgencies?.[0]?.count > 1 ? ` x${signals.releaseAgencies[0].count}` : ''}`;
+    next.incumbentEvidenceUrl = signals.footerVerifiedAgencyUrl || null;
+    next.irPosture = 'agency-retained';
+  } else if ((signals.releaseCount ?? 0) >= READ_ENOUGH) {
+    next.hasIncumbentAgency = false;
+    next.incumbentAgency = null;
+    next.incumbentEvidence = `no agency named across ${signals.releaseCount} release footers`;
+    next.irPosture = signals.releaseIrEmails?.length || issuer.irEmail ? 'in-house' : 'no-visible-ir';
+  }
+
+  if (signals.releaseIrEmails?.length && !next.irEmail) next.irEmail = signals.releaseIrEmails[0];
+  return next;
+}
+
 /** Columns for the CSV export, mirroring the POC workbook's layout. */
 export const EXPORT_COLUMNS = [
   ['symbol', 'Symbol'],
@@ -162,6 +220,12 @@ export const EXPORT_COLUMNS = [
   ['irEmail', 'IR Contact'],
   ['irJobPosting', 'IR Job Posting'],
   ['linkedin', 'LinkedIn'],
+  ['primaryNewswire', 'Media Provider (receipt)'],
+  ['releasesLast12m', 'Releases (12mo)'],
+  ['latestRelease', 'Latest Release'],
+  ['newsNoReactionPct', 'News No Reaction'],
+  ['latestFinancingText', 'Raise Closed'],
+  ['undervaluedQuoteText', 'CEO Undervalued Quote'],
   ['fitScore', 'Fit Score'],
   ['fitTier', 'Tier'],
   ['fitReasons', 'Why this company is a good fit for Market One'],
@@ -175,6 +239,15 @@ export function toRow(it) {
     summaryShort: it.summary ? `${it.summary.split(/(?<=\.)\s/)[0]}`.slice(0, 220) : null,
     dollarPerWatcher: it.watchers && it.avgDollarVolume3m != null ? it.avgDollarVolume3m / it.watchers : null,
     runwayMonths: burn && it.cash != null ? (it.cash / burn) * 12 : null,
+    newsNoReactionPct: it.newsReaction?.flatShare != null
+      ? `${Math.round(it.newsReaction.flatShare * 100)}% of ${it.newsReaction.measured} releases moved nothing`
+      : null,
+    latestFinancingText: it.latestFinancing?.date
+      ? `${it.latestFinancing.date} - ${it.latestFinancing.title || 'financing'}`
+      : null,
+    undervaluedQuoteText: it.undervaluedQuote?.quote
+      ? `${it.undervaluedQuote.speaker ? `${it.undervaluedQuote.speaker}: ` : ''}"${it.undervaluedQuote.quote}"`
+      : null,
     fitScore: it.fit?.score ?? null,
     fitTier: it.fit?.tier ?? null,
     fitReasons: it.fit?.reasons?.join(' | ') ?? null,

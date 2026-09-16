@@ -17,7 +17,8 @@
     "lint": "echo \"(no linter configured)\"",
     "issuers": "npm --workspace server run issuers:all --",
     "issuers:check": "npm --workspace server run issuers:check",
-    "issuers:stats": "npm --workspace server run issuers:stats"
+    "issuers:stats": "npm --workspace server run issuers:stats",
+    "issuers:qualify": "npm --workspace server run issuers:qualify --"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

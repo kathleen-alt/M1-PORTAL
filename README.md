@@ -84,6 +84,7 @@ Set it in `.env` (server) — pillars, per-pillar search queries, allowlist doma
 ```
 server/index.js          API: /api/news, /api/analyze, /api/generate, /api/refine, /api/slack
 server/issuers/          Issuer pipeline: sources/, score.js, pipeline.js, routes.js, store.js
+server/issuers/sources/releases.js   Press-release archive discovery + parsing
 server/cli/issuers.js    Pipeline CLI (check / universe / enrich / scan / score / export)
 server/data/             issuers.seed.json (POC seed) + poc/ source sheets
 client/src/App.jsx       The portal UI (dashboard, newsroom, studio, calendar, slack)
@@ -112,7 +113,8 @@ file, which matters when a corporate network blocks a host or an endpoint moves.
 | CSE | CSE listings feed | `server/data/universe/cse.csv` |
 | Market data | Yahoo Finance `quoteSummary` + `chart` (price, cap, volume, 52w range, revenue, cash, float, next earnings) | — |
 | Retail awareness | StockTwits watcher counts | — |
-| IR posture | The company's own website and release footers | — |
+| IR posture | The company's own website | — |
+| Press releases | The company's full release archive, found via `sitemap.xml`, RSS/Atom, or paginated news indexes | — |
 
 Test-issues, ETFs, warrants, units and preferreds are filtered out of the
 universe — the list is operating companies only.
@@ -133,6 +135,7 @@ requests:
 npm --workspace server run issuers:universe -- --venues NASDAQ,OTC,TSXV,CSE
 npm --workspace server run issuers:enrich   -- --limit 500
 npm --workspace server run issuers:scan     -- --limit 100
+npm --workspace server run issuers:releases -- --limit 50 --max-releases 120
 npm --workspace server run issuers:score
 npm --workspace server run issuers:export   -- --min-score 60 --out prospects.csv
 ```
@@ -141,6 +144,78 @@ npm --workspace server run issuers:export   -- --min-score 60 --out prospects.cs
 answered, so a blocked host is visible immediately rather than showing up as an
 empty result later.
 
+### Eligibility floors
+
+Two hard rules gate the list before scoring means anything:
+
+| Floor | Default | Env |
+| --- | --- | --- |
+| Share volume | 10,000 shares/day | `ISSUERS_MIN_SHARE_VOLUME` |
+| Market cap | $10M | `ISSUERS_MIN_MARKET_CAP` |
+
+These are disqualifiers, not signals. A name that trades a few hundred shares a
+day cannot absorb the interest a campaign creates, and a shell-sized market cap
+is not a client — so they are hidden from the list rather than scored down
+("Show below the floors" reveals them). The `Thin vs peers` signal also decays
+back toward zero beneath the share-volume floor, so the model stops paying a
+company for being closer to untradeable.
+
+A record with no volume or cap yet is **unknown**, not ineligible — otherwise a
+universe refresh would hide everything before enrichment ran.
+
+### Reading the press releases
+
+The richest columns in the POC workbook are not market data. They are read out
+of the companies' own releases: who signs the footer, which wire they pay, what
+the CEO says about being undervalued, what they just raised and who they just
+hired. `npm --workspace server run issuers:releases` enumerates a company's
+archive and reads all of it.
+
+Discovery runs three ways, best first: **sitemap.xml** (the only genuinely
+complete source), **RSS/Atom** (dated and clean, usually recent only), then
+**paginated news indexes** as a fallback. Once a sitemap answers, the index
+crawl is skipped entirely — it would add nothing and cost someone else's server
+hundreds of requests.
+
+Each release yields its date, title, newswire, footer agencies and emails,
+executive quotes, and whether it is a financing, an IR hire or a catalyst. Those
+aggregate into:
+
+- **Footer-verified incumbent** — an agency named in the footers, with a link to
+  the release it was found in. A name that recurs is the agency of record, not a
+  one-off mention. Release footers outrank the website scan when they disagree,
+  and "runs IR in-house" is only concluded once at least three releases have
+  actually been read.
+- **Media provider (receipt)** — the wire they pay to distribute, which proves
+  there is already a comms budget.
+- **CEO undervalued quote** — management saying out loud that the market is not
+  seeing them. The opening line of the pitch, in their words.
+- **News, no reaction** — release dates joined against daily price bars. A
+  company whose own announcements move neither price nor volume is not being
+  heard, which is the clearest argument there is for the service.
+
+### The normal way to run it
+
+```bash
+npm run issuers:qualify
+```
+
+Two passes, because reading a website and a full release archive costs hundreds
+of requests per company while market data costs two:
+
+1. Score the whole universe on market data alone.
+2. Take everything that clears the eligibility floors and the score threshold,
+   read those websites and release archives, and **re-score with what that
+   found**.
+
+The second pass regularly moves names *down* — that is the point. A company can
+look ideal on market data and turn out to have an agency of record named in
+every release footer, which only the archive reveals.
+
+```bash
+npm run issuers:qualify -- --min-score 45 --deep 100 --max-releases 120
+```
+
 ### The qualification model
 
 `server/issuers/score.js` is the POC workbook expressed as code. Five tests, each
@@ -148,11 +223,13 @@ one a reason an issuer would buy:
 
 | Test | Weight | Signals |
 | --- | --- | --- |
-| Nobody is trading them | 30 | thin vs peers, liquidity decay, drawdown |
-| Watched but not bought | 22 | conviction gap ($ traded per watcher), retail awareness |
-| Business quality | 18 | cap in range, revenue or defined asset, can fund a program |
-| Something is coming | 18 | capital-needing runway, catalyst window, listing pressure, recent listing |
-| Already paying to fix it | 12 | no agency retained, hiring/staffing IR |
+| Nobody is trading them | 32 | thin vs peers, liquidity decay, drawdown, **news/no reaction** |
+| Watched but not bought | 22 | conviction gap ($ traded per watcher), retail awareness, **management says so** |
+| Business quality | 16 | cap in range, revenue or defined asset, can fund a program |
+| Something is coming | 18 | capital-needing runway, catalyst window, listing pressure, recent listing, **just raised** |
+| Already paying to fix it | 12 | no agency retained, hiring/staffing IR, **pays to distribute** |
+
+Signals in bold come from the press-release archive. Weights sum to 100.
 
 Two design decisions are worth knowing about, because both change what you see:
 
@@ -199,17 +276,22 @@ analyst's judgement.
 | `/api/issuers/sources` | GET | What is held; `?probe=1` also tests every source |
 | `/api/issuers/export.csv` | GET | The current query in the POC workbook's column layout |
 | `/api/issuers/:key` | GET | One issuer, full record (key is `EXCHANGE:SYMBOL`) |
-| `/api/issuers/refresh` | POST | Run a pipeline stage (`universe`/`enrich`/`scan`/`score`/`all`) |
+| `/api/issuers/refresh` | POST | Run a pipeline stage (`universe`/`enrich`/`scan`/`releases`/`score`/`all`) |
 | `/api/issuers/:key/scan` | POST | Re-verify one company from source, on demand |
 
 Filters: `q`, `exchange`, `sector`, `tier`, `capBand`, `irPosture`, `minScore`,
 `maxVolume`, `minCap`, `maxCap`, `minDrawdown`, `minWatchers`, `noAgency`,
-`hasContact`, `enriched`, `verified`, `sort`, `page`, `pageSize`.
+`hasContact`, `enriched`, `verified`, `hasQuote`, `recentRaise`, `noReaction`,
+`hasReleases`, `newswire`, `includeIneligible`, `sort`, `page`, `pageSize`.
+
+Ineligible issuers are excluded unless `includeIneligible=1`.
 
 ### Crawling conduct
 
-The website scanner honours `robots.txt`, paces requests per host, caches
-aggressively, and reads at most a handful of pages per company. Exchange files
+The website and release scanners honour `robots.txt`, pace requests per host,
+cache aggressively, and stop as soon as a better discovery route has answered.
+Release archives are capped per company (`--max-releases`) and read newest-first,
+so a capped run keeps the releases that matter. Exchange files
 are cached for 12-24 hours. Treat the rate limits as load-bearing: they are what
 keeps this sustainable against public endpoints that have no contract with you.
 

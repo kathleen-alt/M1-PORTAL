@@ -9,6 +9,54 @@
 // Every signal returns { hit, value, label, weight } so the UI can show *why* a
 // company scored the way it did rather than an unexplained number.
 
+// ── Eligibility ──────────────────────────────────────────────────────────────
+// Hard floors, applied before scoring means anything. The qualification model
+// rewards a company for being overlooked, but past a point "overlooked" is just
+// untradeable: a name that trades a few hundred shares a day cannot absorb the
+// interest a campaign creates, and a shell-sized market cap is not a client.
+// These are disqualifiers rather than signals, so they gate the list instead of
+// moving the score.
+export const ELIGIBILITY = {
+  minShareVolume: Number(process.env.ISSUERS_MIN_SHARE_VOLUME || 10_000),
+  minMarketCap: Number(process.env.ISSUERS_MIN_MARKET_CAP || 10_000_000),
+};
+
+/**
+ * Apply the hard floors.
+ *
+ * A missing value is not a failure -- an un-enriched record is "unknown", not
+ * "ineligible", or a refresh would quietly delete half the universe.
+ *
+ * @returns {{eligible: boolean, unknown: boolean, reasons: string[]}}
+ */
+export function assessEligibility(issuer) {
+  const reasons = [];
+  let unknown = false;
+
+  // Yahoo reports share volume directly; derive it from dollar volume when a
+  // record carries only that (the POC seed does).
+  const shareVolume = issuer.avgVolume3m
+    ?? (issuer.avgDollarVolume3m != null && issuer.price ? issuer.avgDollarVolume3m / issuer.price : null);
+
+  if (shareVolume == null) unknown = true;
+  else if (shareVolume < ELIGIBILITY.minShareVolume) {
+    reasons.push(
+      `Trades ~${Math.round(shareVolume).toLocaleString()} shares/day, below the ` +
+      `${ELIGIBILITY.minShareVolume.toLocaleString()}-share floor`,
+    );
+  }
+
+  if (issuer.marketCap == null) unknown = true;
+  else if (issuer.marketCap < ELIGIBILITY.minMarketCap) {
+    reasons.push(
+      `Market cap $${(issuer.marketCap / 1e6).toFixed(1)}M is under the ` +
+      `$${(ELIGIBILITY.minMarketCap / 1e6).toFixed(0)}M floor`,
+    );
+  }
+
+  return { eligible: reasons.length === 0, unknown, reasons };
+}
+
 /** Cap bands used for peer grouping and for the affordability test. */
 export const CAP_BANDS = [
   { id: 'nano', label: 'Nano (<$50M)', max: 50e6 },
@@ -143,12 +191,12 @@ const TESTS = [
   {
     id: 'invisible',
     label: 'Nobody is trading them',
-    weight: 30,
+    weight: 32,
     signals: [
       {
         id: 'lowVolume',
         label: 'Thin vs peers',
-        weight: 12,
+        weight: 11,
         run: (it, ctx) => {
           const peers = peersFor(ctx.peerStats, it.sectorGroup, it.capBand);
           // A peer median carried on the record (e.g. an analyst's own
@@ -156,19 +204,30 @@ const TESTS = [
           const med = it.peerMedianDollarVolume || peers?.medianDollarVolume;
           if (it.avgDollarVolume3m == null || !med) return null;
           const ratio = it.avgDollarVolume3m / med;
+
+          // Thin is the opportunity; untradeable is not. Below the share-volume
+          // floor the signal decays back toward zero rather than paying out
+          // more the closer a company gets to not trading at all.
+          const shares = it.avgVolume3m
+            ?? (it.price ? it.avgDollarVolume3m / it.price : null);
+          const floor = ELIGIBILITY.minShareVolume;
+          const tradeable = shares == null ? 1 : Math.max(0, Math.min(1, shares / floor));
+
           return {
-            hit: ratio < 1,
+            hit: ratio < 1 && tradeable >= 1,
             // Full credit at a quarter of peer liquidity, none at peer level.
-            strength: Math.max(0, Math.min(1, (1 - ratio) / 0.75)),
+            strength: Math.max(0, Math.min(1, (1 - ratio) / 0.75)) * tradeable,
             value: ratio,
-            label: `${usd(it.avgDollarVolume3m)}/day = ${(ratio * 100).toFixed(0)}% of peer median ${usd(med)}`,
+            label:
+              `${usd(it.avgDollarVolume3m)}/day = ${(ratio * 100).toFixed(0)}% of peer median ${usd(med)}` +
+              (tradeable < 1 ? ` - but only ~${Math.round(shares).toLocaleString()} shares/day, too thin to work` : ''),
           };
         },
       },
       {
         id: 'volumeDecay',
         label: 'Liquidity decaying',
-        weight: 8,
+        weight: 6,
         run: (it) => {
           if (it.volumeDecayPct == null) return null;
           return {
@@ -182,7 +241,7 @@ const TESTS = [
       {
         id: 'drawdown',
         label: 'Deep drawdown',
-        weight: 10,
+        weight: 9,
         run: (it) => {
           if (it.drawdownPct == null) return null;
           return {
@@ -190,6 +249,26 @@ const TESTS = [
             strength: Math.max(0, Math.min(1, -it.drawdownPct / 0.85)),
             value: it.drawdownPct,
             label: `${Math.abs(it.drawdownPct * 100).toFixed(0)}% below 52w high${it.drawdownPct <= -0.8 ? ' - DEEP' : ''}`,
+          };
+        },
+      },
+      {
+        id: 'newsNoReaction',
+        label: 'News, no reaction',
+        weight: 6,
+        run: (it) => {
+          // Read out of the company's own release archive, joined against its
+          // daily bars: announcements that move neither price nor volume. The
+          // most direct evidence that the market is not listening.
+          const r = it.newsReaction;
+          if (!r || r.measured < 3) return null;
+          return {
+            hit: r.flatShare >= 0.6,
+            strength: Math.max(0, Math.min(1, (r.flatShare - 0.3) / 0.6)),
+            value: r.flatShare,
+            label:
+              `${r.flat} of ${r.measured} announcements moved the stock less than 3% on under 2x volume ` +
+              `(median move ${(r.medianAbsMove * 100).toFixed(1)}%) - they publish and nothing happens`,
           };
         },
       },
@@ -203,7 +282,7 @@ const TESTS = [
       {
         id: 'convictionGap',
         label: 'Conviction gap',
-        weight: 16,
+        weight: 14,
         run: (it, ctx) => {
           if (!it.watchers || it.avgDollarVolume3m == null) return null;
           const perWatcher = it.avgDollarVolume3m / it.watchers;
@@ -227,7 +306,7 @@ const TESTS = [
       {
         id: 'awarenessIndex',
         label: 'Retail awareness',
-        weight: 6,
+        weight: 4,
         run: (it, ctx) => {
           if (!it.watchers) return null;
           const peers = peersFor(ctx.peerStats, it.sectorGroup, it.capBand);
@@ -242,30 +321,50 @@ const TESTS = [
           };
         },
       },
+      {
+        id: 'ceoUndervalued',
+        label: 'Management says so',
+        weight: 4,
+        run: (it) => {
+          // Management stating in its own release that the market is not seeing
+          // the company. The sheet's "CEO Undervalued Quote" -- the opening line
+          // of the pitch, in their words rather than ours.
+          if (!it.undervaluedQuote?.quote) return null;
+          const speaker = it.undervaluedQuote.speaker ? `${it.undervaluedQuote.speaker}: ` : '';
+          return {
+            hit: true,
+            strength: 1,
+            value: it.undervaluedQuote.url || true,
+            label: `THEIR WORDS - ${speaker}"${it.undervaluedQuote.quote.slice(0, 180)}"`,
+          };
+        },
+      },
     ],
   },
   {
     id: 'quality',
     label: 'Business quality',
-    weight: 18,
+    weight: 16,
     signals: [
       {
         id: 'capFit',
         label: 'Cap in range',
-        weight: 8,
+        weight: 7,
         run: (it) => {
           if (it.marketCap == null) return null;
           // The sweet spot is a company big enough to pay and small enough to
-          // be ignored: roughly $20M to $1B.
-          const inRange = it.marketCap >= 20e6 && it.marketCap <= 1e9;
-          const strength = inRange ? (it.marketCap <= 500e6 ? 1 : 0.6) : it.marketCap < 20e6 ? 0.15 : 0.2;
+          // be ignored: from the eligibility floor up to about $1B.
+          const inRange = it.marketCap >= ELIGIBILITY.minMarketCap && it.marketCap <= 1e9;
+          const strength = inRange
+            ? (it.marketCap <= 500e6 ? 1 : 0.6)
+            : it.marketCap < ELIGIBILITY.minMarketCap ? 0 : 0.2;
           return { hit: inRange, strength, value: it.marketCap, label: `Market cap ${usd(it.marketCap)}` };
         },
       },
       {
         id: 'assetBacked',
         label: 'Revenue or defined asset',
-        weight: 5,
+        weight: 4,
         run: (it) => {
           const hasRevenue = it.revenue != null && it.revenue > 1e6;
           const assetBacked = it.sectorGroup === 'mining' || it.sectorGroup === 'energy';
@@ -304,7 +403,7 @@ const TESTS = [
       {
         id: 'financingNeed',
         label: 'Capital-needing',
-        weight: 8,
+        weight: 6,
         run: (it) => {
           if (it.cash == null) return null;
           // Burn-implied runway: cash against trailing operating cash outflow.
@@ -322,7 +421,7 @@ const TESTS = [
       {
         id: 'earningsWindow',
         label: 'Catalyst window',
-        weight: 4,
+        weight: 3,
         run: (it) => {
           if (!it.nextEarnings) return null;
           const days = (new Date(it.nextEarnings) - Date.now()) / 86400e3;
@@ -337,7 +436,7 @@ const TESTS = [
       {
         id: 'listingCompliance',
         label: 'Listing pressure',
-        weight: 3,
+        weight: 2,
         run: (it) => {
           const deficient = it.financialStatus === 'D' || it.financialStatus === 'E';
           const subDollar = it.price != null && it.price < 1 && it.exchange === 'NASDAQ';
@@ -353,7 +452,7 @@ const TESTS = [
       {
         id: 'recentListing',
         label: 'Recent listing / IPO',
-        weight: 3,
+        weight: 2,
         run: (it) => {
           if (!it.listingYear) return null;
           const age = new Date().getFullYear() - it.listingYear;
@@ -362,6 +461,29 @@ const TESTS = [
             strength: Math.max(0, Math.min(1, (4 - age) / 4)),
             value: it.listingYear,
             label: `Listed ${it.listingYear}${age <= 2 ? ' - still inside the post-IPO support window' : ''}`,
+          };
+        },
+      },
+      {
+        id: 'recentFinancing',
+        label: 'Just raised',
+        weight: 5,
+        run: (it) => {
+          // A closed raise is the best possible timing: the money is in the bank
+          // and the reason they raised it now needs an audience.
+          if (!it.latestFinancing?.date && !it.financingCount12m) return null;
+          const days = it.latestFinancing?.date
+            ? (Date.now() - Date.parse(it.latestFinancing.date)) / 86400e3
+            : null;
+          if (days == null) return null;
+          return {
+            hit: days <= 270,
+            strength: Math.max(0, Math.min(1, (365 - days) / 365)),
+            value: it.latestFinancing.date,
+            label:
+              `Raise closed ${it.latestFinancing.date} (${Math.round(days)} days ago)` +
+              `${it.financingCount12m > 1 ? `, ${it.financingCount12m} financings in 12 months` : ''}` +
+              ` - ${it.latestFinancing.title ? `"${String(it.latestFinancing.title).slice(0, 90)}"` : 'funded and needing the story told'}`,
           };
         },
       },
@@ -375,7 +497,7 @@ const TESTS = [
       {
         id: 'noIncumbent',
         label: 'No agency retained',
-        weight: 7,
+        weight: 6,
         run: (it) => {
           if (it.hasIncumbentAgency == null) return null;
           return {
@@ -384,14 +506,14 @@ const TESTS = [
             value: it.incumbentAgency,
             label: it.hasIncumbentAgency
               ? `Incumbent: ${it.incumbentAgency} (${it.incumbentEvidence}) - mandate already held`
-              : 'Runs IR in-house - no external agency in the footer',
+              : `Runs IR in-house - no external agency in ${it.releaseCount ? `${it.releaseCount} release footers` : 'the footer'}`,
           };
         },
       },
       {
         id: 'irInvestment',
         label: 'Hiring / staffing IR',
-        weight: 5,
+        weight: 4,
         run: (it) => {
           const posting = Boolean(it.irJobPosting);
           const inHouse = it.irPosture === 'in-house';
@@ -401,6 +523,25 @@ const TESTS = [
             strength: posting ? 1 : 0.5,
             value: it.irJobPosting || it.irEmail,
             label: posting ? 'Open IR role posted - budget already approved' : 'In-house IR contact published',
+          };
+        },
+      },
+      {
+        id: 'commsSpend',
+        label: 'Pays to distribute',
+        weight: 2,
+        run: (it) => {
+          // The sheet's "Media Provider (receipt)": a paid newswire on every
+          // release proves there is already a comms budget to redirect.
+          if (!it.primaryNewswire && !it.releasesLast12m) return null;
+          if (!it.primaryNewswire) {
+            return { hit: false, strength: 0, value: null, label: 'No paid wire detected on releases' };
+          }
+          return {
+            hit: true,
+            strength: 1,
+            value: it.primaryNewswire,
+            label: `Pays ${it.primaryNewswire} to distribute${it.releasesLast12m ? ` (${it.releasesLast12m} releases in 12 months)` : ''}`,
           };
         },
       },
@@ -493,11 +634,16 @@ export function scoreIssuer(issuer, ctx = {}) {
     : score >= 40 ? 'C - watch'
     : 'D - pass';
 
+  const eligibility = assessEligibility(issuer);
+
   return {
     score,
     coverage,
     provisional,
     tier,
+    eligible: eligibility.eligible,
+    eligibilityUnknown: eligibility.unknown,
+    ineligibleReasons: eligibility.reasons,
     tests,
     reasons: tests
       .flatMap((t) => t.signals)

@@ -13,7 +13,7 @@ import express from 'express';
 import * as store from './store.js';
 import * as pipeline from './pipeline.js';
 import { toCsv, toRow } from './normalize.js';
-import { TEST_META, CAP_BANDS, MIN_COVERAGE } from './score.js';
+import { TEST_META, CAP_BANDS, MIN_COVERAGE, ELIGIBILITY } from './score.js';
 
 export const router = express.Router();
 
@@ -35,6 +35,9 @@ const SORTS = {
   watchers: (a, b) => (b.watchers ?? -1) - (a.watchers ?? -1),
   symbol: (a, b) => a.symbol.localeCompare(b.symbol),
   updated: (a, b) => String(b.marketDataAt || '').localeCompare(String(a.marketDataAt || '')),
+  releases: (a, b) => (b.releaseCount ?? -1) - (a.releaseCount ?? -1),
+  noReaction: (a, b) => (b.newsReaction?.flatShare ?? -1) - (a.newsReaction?.flatShare ?? -1),
+  lastRelease: (a, b) => String(b.latestRelease || '').localeCompare(String(a.latestRelease || '')),
 };
 
 /** Apply every filter in the query string to the held universe. */
@@ -53,6 +56,14 @@ function applyFilters(issuers, q) {
   const minDrawdown = q.minDrawdown != null ? numOr(q.minDrawdown, null) : null; // e.g. 0.4 = at least 40% off high
   const minWatchers = q.minWatchers != null ? numOr(q.minWatchers, null) : null;
   const noAgency = q.noAgency === '1' || q.noAgency === 'true';
+  const hasQuote = q.hasQuote === '1' || q.hasQuote === 'true';
+  const recentRaise = q.recentRaise === '1' || q.recentRaise === 'true';
+  const noReaction = q.noReaction === '1' || q.noReaction === 'true';
+  const hasReleases = q.hasReleases === '1' || q.hasReleases === 'true';
+  const newswire = listParam(q.newswire);
+  // Ineligible names are hidden unless asked for: the floors are a standing
+  // rule, so they should not have to be re-applied on every query.
+  const includeIneligible = q.includeIneligible === '1' || q.includeIneligible === 'true';
   const hasContact = q.hasContact === '1' || q.hasContact === 'true';
   const enrichedOnly = q.enriched === '1' || q.enriched === 'true';
   const excludeProvisional = q.verified === '1' || q.verified === 'true';
@@ -71,7 +82,14 @@ function applyFilters(issuers, q) {
     if (minDrawdown != null && !(it.drawdownPct != null && it.drawdownPct <= -minDrawdown)) return false;
     if (minWatchers != null && !(it.watchers != null && it.watchers >= minWatchers)) return false;
 
+    if (!includeIneligible && it.fit && it.fit.eligible === false) return false;
+
     if (noAgency && it.hasIncumbentAgency !== false) return false;
+    if (hasQuote && !it.undervaluedQuote?.quote) return false;
+    if (recentRaise && !it.latestFinancing?.date) return false;
+    if (noReaction && !(it.newsReaction && it.newsReaction.flatShare >= 0.6)) return false;
+    if (hasReleases && !it.releaseCount) return false;
+    if (newswire && !newswire.includes(it.primaryNewswire)) return false;
     if (hasContact && !(it.irEmail || it.linkedin)) return false;
     if (enrichedOnly && !it.marketDataAt) return false;
     if (excludeProvisional && it.fit?.provisional !== false) return false;
@@ -127,6 +145,19 @@ router.get('/issuers/facets', async (_req, res) => {
       tiers: count((it) => it.fit?.tier),
       capBands: count('capBand'),
       irPostures: count('irPosture'),
+      newswires: count('primaryNewswire'),
+      eligibility: {
+        ...ELIGIBILITY,
+        eligible: all.filter((i) => i.fit?.eligible === true && !i.fit?.eligibilityUnknown).length,
+        ineligible: all.filter((i) => i.fit?.eligible === false).length,
+        unknown: all.filter((i) => i.fit?.eligibilityUnknown).length,
+      },
+      releaseCoverage: {
+        scanned: all.filter((i) => i.releaseScanAt).length,
+        withArchive: all.filter((i) => i.releaseCount).length,
+        withQuote: all.filter((i) => i.undervaluedQuote?.quote).length,
+        withRecentRaise: all.filter((i) => i.latestFinancing?.date).length,
+      },
       bandMeta: CAP_BANDS,
       stats: await store.stats(),
     });
@@ -148,7 +179,7 @@ router.get('/issuers/export.csv', async (req, res) => {
 });
 
 router.get('/issuers/model', (_req, res) => {
-  res.json({ tests: TEST_META, minCoverage: MIN_COVERAGE });
+  res.json({ tests: TEST_META, minCoverage: MIN_COVERAGE, eligibility: ELIGIBILITY });
 });
 
 router.get('/issuers/sources', async (req, res) => {
@@ -185,6 +216,7 @@ router.post('/issuers/refresh', async (req, res) => {
       case 'universe': return pipeline.refreshUniverse({ venues });
       case 'enrich': return pipeline.enrich({ limit: limit ?? 200 });
       case 'scan': return pipeline.scanSites({ limit: limit ?? 50 });
+      case 'releases': return pipeline.scanReleaseArchives({ limit: limit ?? 25 });
       case 'score': return pipeline.rescore();
       default: return pipeline.runAll({ venues, enrichLimit: limit ?? 200, scanLimit: 50, verbose: false });
     }
@@ -208,7 +240,10 @@ router.post('/issuers/:key/scan', async (req, res) => {
     if (!it) return res.status(404).json({ error: 'Unknown issuer' });
 
     await pipeline.enrich({ keys: [key], limit: 1 });
-    if ((await store.get(key))?.website) await pipeline.scanSites({ keys: [key], limit: 1 });
+    if ((await store.get(key))?.website) {
+      await pipeline.scanSites({ keys: [key], limit: 1 });
+      await pipeline.scanReleaseArchives({ keys: [key], limit: 1 });
+    }
     await pipeline.rescore();
 
     res.json(toRow(await store.get(key)));

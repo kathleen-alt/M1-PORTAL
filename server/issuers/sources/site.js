@@ -13,7 +13,7 @@ import { get, HttpError } from '../http.js';
 
 // IR / PR agencies whose names turn up in release footers and IR pages. A hit
 // here means the mandate is already held by someone.
-const AGENCIES = [
+export const AGENCIES = [
   'ICR Inc', 'ICR, LLC', 'Gateway Group', 'Gateway Investor Relations', 'MZ Group', 'MZ North America',
   'Lytham Partners', 'KCSA Strategic Communications', 'Renmark Financial Communications', 'Adelaide Capital',
   'Sophic Capital', 'RB Milestone Group', 'RBMG', 'Hayden IR', 'CORE IR', 'Skyline Corporate Communications',
@@ -44,7 +44,7 @@ const JOB_RE =
 const EMAIL_NOISE = /(sentry|wixpress|example|domain|yourcompany|godaddy|\.png|\.jpg|\.webp|@2x)/i;
 
 /** Strip tags, scripts and entities; keep readable text for pattern matching. */
-function toText(html) {
+export function toText(html) {
   return html
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
@@ -61,7 +61,7 @@ function toText(html) {
     .trim();
 }
 
-function absolutize(href, base) {
+export function absolutize(href, base) {
   try {
     return new URL(href, base).toString();
   } catch {
@@ -70,7 +70,7 @@ function absolutize(href, base) {
 }
 
 /** Pull every same-origin link with its anchor text. */
-function links(html, base) {
+export function links(html, base) {
   const out = [];
   const re = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m;
@@ -83,7 +83,7 @@ function links(html, base) {
 }
 
 /** Minimal robots.txt check for our user-agent. */
-async function robotsDisallow(origin) {
+export async function robotsDisallow(origin) {
   const body = await get(`${origin}/robots.txt`, { cacheMs: 7 * 86400e3, retries: 0, allow404: true, timeoutMs: 8000 })
     .catch(() => null);
   if (!body) return () => false;
@@ -105,7 +105,7 @@ function footerOf(text) {
   return text.slice(-2500);
 }
 
-function findAgencies(text) {
+export function findAgencies(text) {
   const hits = new Set();
   for (const a of AGENCIES) {
     // Loosen punctuation so "ICR, LLC" matches "ICR LLC".

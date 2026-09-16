@@ -19,8 +19,9 @@ import * as cse from './sources/cse.js';
 import * as yahoo from './sources/yahoo.js';
 import * as stocktwits from './sources/stocktwits.js';
 import * as site from './sources/site.js';
+import * as releases from './sources/releases.js';
 import * as store from './store.js';
-import { fromUniverse, applyMarketData, applyAwareness, applySiteScan } from './normalize.js';
+import { fromUniverse, applyMarketData, applyAwareness, applySiteScan, applyReleaseScan } from './normalize.js';
 import { scoreAll } from './score.js';
 
 export const VENUES = {
@@ -141,7 +142,7 @@ export async function enrich({ keys = null, limit = 500, concurrency = 4, verbos
 }
 
 /** Stage 3 — crawl company websites for IR posture. */
-export async function scanSites({ keys = null, limit = 100, concurrency = 3, verbose = false } = {}) {
+export async function scanSites({ keys = null, limit = 100, concurrency = 3, maxPages = 6, verbose = false } = {}) {
   const held = await store.all();
   const targets = (keys ? held.filter((i) => keys.includes(i.key)) : held.filter((i) => i.website && !i.siteScanAt))
     .filter((i) => i.website)
@@ -154,7 +155,7 @@ export async function scanSites({ keys = null, limit = 100, concurrency = 3, ver
     targets,
     concurrency,
     async (it) => {
-      const scan = await site.scanSite(it.website);
+      const scan = await site.scanSite(it.website, { maxPages });
       const signals = site.deriveSiteSignals(scan);
       if (scan.reachable) summary.reachable += 1;
       if (signals.hasIncumbentAgency) summary.agencyFound += 1;
@@ -171,7 +172,84 @@ export async function scanSites({ keys = null, limit = 100, concurrency = 3, ver
 }
 
 /**
- * Stage 4 — score everything held.
+ * Stage 4 — read each company's press-release archive.
+ *
+ * The most expensive stage by far: a full archive is hundreds of pages per
+ * company. It is also where the qualification model's best evidence comes from,
+ * so it runs last, over the names that survived the earlier stages.
+ *
+ * Daily bars are pulled alongside (from Yahoo's cache) so release dates can be
+ * joined against price action for the "news, no reaction" signal.
+ */
+export async function scanReleaseArchives({
+  keys = null,
+  limit = 50,
+  concurrency = 2,
+  maxReleases = 120,
+  verbose = false,
+  minScore = null,
+} = {}) {
+  const held = await store.all();
+  let targets = keys
+    ? held.filter((i) => keys.includes(i.key))
+    : held.filter((i) => i.website && !i.releaseScanAt);
+
+  // Reading an archive is expensive enough that it is worth spending on the
+  // names most likely to be worked.
+  if (minScore != null) targets = targets.filter((i) => (i.fit?.score ?? 0) >= minScore);
+  targets = targets.filter((i) => i.website).slice(0, limit);
+
+  log(verbose, `· reading release archives for ${targets.length} companies…`);
+  const summary = {
+    attempted: targets.length,
+    reachable: 0,
+    releasesRead: 0,
+    agencyFound: 0,
+    quotesFound: 0,
+    reactionMeasured: 0,
+    failed: 0,
+  };
+
+  const out = await pool(
+    targets,
+    concurrency,
+    async (it) => {
+      let scan;
+      try {
+        scan = await releases.scanReleases(it.website, { maxReleases });
+      } catch (err) {
+        summary.failed += 1;
+        return { ...it, releaseScanError: err.message, releaseScanAt: new Date().toISOString() };
+      }
+      if (!scan.reachable) {
+        return { ...it, releaseScanError: scan.error, releaseScanAt: scan.scannedAt };
+      }
+
+      let bars = null;
+      try {
+        bars = (await yahoo.fetchHistory(it.yahooSymbol))?.bars || null;
+      } catch { /* the reaction signal is optional */ }
+
+      const signals = releases.deriveReleaseSignals(scan, bars);
+      summary.reachable += 1;
+      summary.releasesRead += signals.releaseCount || 0;
+      if (signals.footerVerifiedAgency) summary.agencyFound += 1;
+      if (signals.undervaluedQuote) summary.quotesFound += 1;
+      if (signals.newsReaction) summary.reactionMeasured += 1;
+
+      return applyReleaseScan(it, scan, signals);
+    },
+    (done, total) => log(verbose, `  ${done}/${total}`),
+  );
+
+  await store.upsertMany(out.filter((r) => r && r.key));
+  await store.logRun({ stage: 'releases', ...summary });
+  await store.save();
+  return summary;
+}
+
+/**
+ * Stage 5 — score everything held.
  * Peer medians come from the full held universe, so scoring after a wider
  * enrichment sweep sharpens every previous record's comparison too.
  */
@@ -232,15 +310,89 @@ export async function checkSources() {
     if (!s.reachable) throw new Error(s.error || 'unreachable');
     return `scanned ${s.pagesScanned.length} pages`;
   });
+  await probe('releases', releases.meta.label, async () => {
+    const s = await releases.scanReleases('https://www.apple.com', { maxReleases: 3, cacheMs: 0 });
+    if (!s.reachable) throw new Error(s.error || 'unreachable');
+    if (!s.discovered) throw new Error('no release archive discovered');
+    return `${s.releases.length} releases via ${s.discoveredVia[0] || 'index'}`;
+  });
 
   return { checkedAt: new Date().toISOString(), checks };
 }
 
+/**
+ * Two-pass sweep: qualify cheaply, then go deep only on the survivors.
+ *
+ * Reading a company's website and its full release archive costs hundreds of
+ * requests. Market data costs two. So the first pass scores the whole universe
+ * on market data alone, and only the names that clear the eligibility floors
+ * and the score threshold earn the expensive second pass — after which they are
+ * re-scored with everything the deep pass learned.
+ *
+ * This is the normal way to run the system against a real universe.
+ */
+export async function qualifyAndDeepen({
+  venues = DEFAULT_VENUES,
+  enrichLimit = 2000,
+  minScore = 45,
+  deepLimit = 100,
+  maxReleases = 120,
+  sitePages = 10,
+  verbose = true,
+} = {}) {
+  const universe = await refreshUniverse({ venues, verbose });
+
+  log(verbose, '\n· pass 1 — market data over the universe');
+  const enriched = await enrich({ limit: enrichLimit, verbose });
+  await rescore({ verbose });
+
+  // The shortlist: eligible by the hard floors, and worth the requests.
+  const held = await store.all();
+  const shortlist = held
+    .filter((i) => i.fit?.eligible !== false)
+    .filter((i) => (i.fit?.score ?? 0) >= minScore)
+    .filter((i) => i.website)
+    .sort((a, b) => (b.fit?.score ?? 0) - (a.fit?.score ?? 0))
+    .slice(0, deepLimit);
+
+  log(verbose, `\n· pass 2 — ${shortlist.length} qualified of ${held.length} tracked ` +
+    `(score >= ${minScore}, above the floors, website known)`);
+
+  const keys = shortlist.map((i) => i.key);
+  const scanned = keys.length ? await scanSites({ keys, limit: keys.length, maxPages: sitePages, verbose }) : null;
+  const archives = keys.length
+    ? await scanReleaseArchives({ keys, limit: keys.length, maxReleases, verbose })
+    : null;
+
+  log(verbose, '\n· re-scoring with everything the deep pass found');
+  const scored = await rescore({ verbose });
+
+  return {
+    universe,
+    enriched,
+    qualified: shortlist.length,
+    tracked: held.length,
+    scanned,
+    archives,
+    scored,
+  };
+}
+
 /** Convenience: the whole chain, scoped to a manageable slice. */
-export async function runAll({ venues = DEFAULT_VENUES, enrichLimit = 500, scanLimit = 100, verbose = true } = {}) {
+export async function runAll({
+  venues = DEFAULT_VENUES,
+  enrichLimit = 500,
+  scanLimit = 100,
+  releaseLimit = 40,
+  verbose = true,
+} = {}) {
   const universe = await refreshUniverse({ venues, verbose });
   const enriched = await enrich({ limit: enrichLimit, verbose });
   const scanned = await scanSites({ limit: scanLimit, verbose });
+  // Score before reading archives so the release sweep can target the names
+  // that already look worth the requests.
+  await rescore({ verbose });
+  const archives = await scanReleaseArchives({ limit: releaseLimit, verbose });
   const scored = await rescore({ verbose });
-  return { universe, enriched, scanned, scored };
+  return { universe, enriched, scanned, archives, scored };
 }

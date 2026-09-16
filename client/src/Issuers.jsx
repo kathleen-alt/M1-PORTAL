@@ -16,6 +16,8 @@ const SORTS = [
   { id: 'drawdown', label: 'Deepest drawdown' },
   { id: 'watchers', label: 'Most watched' },
   { id: 'marketCap', label: 'Market cap' },
+  { id: 'noReaction', label: 'News, no reaction' },
+  { id: 'lastRelease', label: 'Most recent release' },
   { id: 'symbol', label: 'Symbol A-Z' },
 ];
 
@@ -93,6 +95,10 @@ export default function Issuers({ onToast }) {
   const [noAgency, setNoAgency] = useState(false);
   const [hasContact, setHasContact] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [hasQuote, setHasQuote] = useState(false);
+  const [recentRaise, setRecentRaise] = useState(false);
+  const [noReaction, setNoReaction] = useState(false);
+  const [includeIneligible, setIncludeIneligible] = useState(false);
 
   const pageSize = 50;
   const debounce = useRef(null);
@@ -113,8 +119,13 @@ export default function Issuers({ onToast }) {
     if (noAgency) p.noAgency = '1';
     if (hasContact) p.hasContact = '1';
     if (verified) p.verified = '1';
+    if (hasQuote) p.hasQuote = '1';
+    if (recentRaise) p.recentRaise = '1';
+    if (noReaction) p.noReaction = '1';
+    if (includeIneligible) p.includeIneligible = '1';
     return p;
-  }, [q, exchange, sector, tier, sort, maxVolume, capRange, minDrawdown, minScore, minWatchers, noAgency, hasContact, verified, page]);
+  }, [q, exchange, sector, tier, sort, maxVolume, capRange, minDrawdown, minScore, minWatchers,
+      noAgency, hasContact, verified, hasQuote, recentRaise, noReaction, includeIneligible, page]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -142,7 +153,8 @@ export default function Issuers({ onToast }) {
     return () => clearTimeout(debounce.current);
   }, [load]);
 
-  useEffect(() => { setPage(1); }, [q, exchange, sector, tier, maxVolume, capRange, minDrawdown, minScore, minWatchers, noAgency, hasContact, verified]);
+  useEffect(() => { setPage(1); }, [q, exchange, sector, tier, maxVolume, capRange, minDrawdown, minScore,
+    minWatchers, noAgency, hasContact, verified, hasQuote, recentRaise, noReaction, includeIneligible]);
 
   const loadFacets = useCallback(async () => {
     try {
@@ -162,6 +174,7 @@ export default function Issuers({ onToast }) {
   const reset = () => {
     setQ(''); setExchange([]); setSector([]); setTier([]); setMaxVolume(''); setCapRange('');
     setMinDrawdown(''); setMinScore(''); setMinWatchers(''); setNoAgency(false); setHasContact(false); setVerified(false);
+    setHasQuote(false); setRecentRaise(false); setNoReaction(false); setIncludeIneligible(false);
   };
 
   const refresh = async (stage) => {
@@ -184,6 +197,10 @@ export default function Issuers({ onToast }) {
   };
 
   const exportUrl = `/api/issuers/export.csv?${new URLSearchParams({ ...params, page: '1', pageSize: '10000' })}`;
+  const eligibilityHint = facets?.eligibility
+    ? `Hidden by default: under ${facets.eligibility.minShareVolume.toLocaleString()} shares/day or ` +
+      `$${Math.round(facets.eligibility.minMarketCap / 1e6)}M market cap`
+    : 'Show issuers below the liquidity and market-cap floors';
   const sectorOptions = facets?.sectors ? Object.keys(facets.sectors).sort() : [];
   const exchangeOptions = facets?.exchanges ? Object.keys(facets.exchanges) : EXCHANGES;
 
@@ -208,6 +225,10 @@ export default function Issuers({ onToast }) {
           </button>
           <button className="btn sm" onClick={() => refresh('scan')} disabled={Boolean(refreshing)}>
             {refreshing === 'scan' ? <span className="spinner" /> : '⌕'} Scan sites
+          </button>
+          <button className="btn sm" onClick={() => refresh('releases')} disabled={Boolean(refreshing)}
+            title="Read every company's full press-release archive">
+            {refreshing === 'releases' ? <span className="spinner" /> : '❏'} Read releases
           </button>
           <a className="btn sm primary" href={exportUrl} download>↓ Export CSV</a>
         </div>
@@ -312,6 +333,37 @@ export default function Issuers({ onToast }) {
             <input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} />
             <span>Fully scored only</span>
           </label>
+
+          <div className="iss-group">
+            <span className="iss-label">From press releases</span>
+            <label className="iss-check">
+              <input type="checkbox" checked={hasQuote} onChange={(e) => setHasQuote(e.target.checked)} />
+              <span>CEO says undervalued</span>
+            </label>
+            <label className="iss-check">
+              <input type="checkbox" checked={recentRaise} onChange={(e) => setRecentRaise(e.target.checked)} />
+              <span>Raised recently</span>
+            </label>
+            <label className="iss-check">
+              <input type="checkbox" checked={noReaction} onChange={(e) => setNoReaction(e.target.checked)} />
+              <span>News gets no reaction</span>
+            </label>
+          </div>
+
+          <div className="iss-group">
+            <span className="iss-label">Eligibility</span>
+            <label className="iss-check" title={eligibilityHint}>
+              <input type="checkbox" checked={includeIneligible} onChange={(e) => setIncludeIneligible(e.target.checked)} />
+              <span>Show below the floors</span>
+            </label>
+            {facets?.eligibility && (
+              <span className="iss-hint">
+                {facets.eligibility.ineligible} of {facets.total} are under{' '}
+                {Math.round(facets.eligibility.minShareVolume / 1000)}K shares/day or $
+                {Math.round(facets.eligibility.minMarketCap / 1e6)}M cap
+              </span>
+            )}
+          </div>
         </aside>
 
         <div className="iss-main">
@@ -335,20 +387,32 @@ export default function Issuers({ onToast }) {
                 <tr>
                   <th>Fit</th><th>Symbol</th><th>Company</th><th>Sector</th>
                   <th className="num">Mkt cap</th><th className="num">$ Vol/day</th>
-                  <th className="num">Drawdown</th><th className="num">Watchers</th><th>IR posture</th>
+                  <th className="num">Drawdown</th><th className="num">Watchers</th>
+                  <th className="num">Releases</th><th>IR posture</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.key} onClick={() => setSelected(r)} className={selected?.key === r.key ? 'sel' : ''}>
+                  <tr key={r.key} onClick={() => setSelected(r)}
+                    className={`${selected?.key === r.key ? 'sel' : ''} ${r.fit?.eligible === false ? 'inelig' : ''}`}>
                     <td><ScorePill score={r.fitScore} tier={r.fitTier} provisional={r.fit?.provisional} /></td>
-                    <td><strong>{r.symbol}</strong><div className="iss-ex">{r.exchange}</div></td>
+                    <td>
+                      <strong>{r.symbol}</strong>
+                      {r.fit?.eligible === false && (
+                        <span className="iss-flag" title={r.fit.ineligibleReasons?.join(' · ')}>below floor</span>
+                      )}
+                      <div className="iss-ex">{r.exchange}</div>
+                    </td>
                     <td className="iss-name">{r.name}</td>
                     <td className="iss-sector" title={r.sectorLabel || ''}>{r.sectorLabel || '—'}</td>
                     <td className="num">{usd(r.marketCap)}</td>
                     <td className="num">{usd(r.avgDollarVolume3m)}</td>
                     <td className={`num ${r.drawdownPct != null && r.drawdownPct <= -0.6 ? 'bad' : ''}`}>{pct(r.drawdownPct)}</td>
-                    <td className="num">{int(r.watchers)}</td>
+                    <td className="num" title={r.latestRelease ? `Latest ${r.latestRelease}` : ''}>
+                      {r.releaseCount
+                        ? <>{r.releasesLast12m ?? r.releaseCount}{r.newsReaction?.flatShare >= 0.6 && <span className="iss-flat" title="Announcements move neither price nor volume">·flat</span>}</>
+                        : '—'}
+                    </td>
                     <td>
                       {r.irPosture === 'agency-retained'
                         ? <span className="iss-tag warn" title={r.incumbentAgency || ''}>{r.incumbentAgency || 'Agency'}</span>
@@ -358,7 +422,7 @@ export default function Issuers({ onToast }) {
                   </tr>
                 ))}
                 {!rows.length && (
-                  <tr><td colSpan={9} className="empty">
+                  <tr><td colSpan={10} className="empty">
                     {loading || !loaded ? 'Loading…' : 'No issuers match these filters.'}
                   </td></tr>
                 )}
@@ -425,6 +489,11 @@ function IssuerDrawer({ issuer, model, onClose, onToast }) {
           <button className="btn ghost sm" onClick={onClose}>✕</button>
         </header>
 
+        {full.fit?.eligible === false && (
+          <div className="banner">
+            <b>Below the floors.</b> {full.fit.ineligibleReasons?.join(' · ')}
+          </div>
+        )}
         {full.fit?.provisional && (
           <div className="banner">
             Scored on {full.fit.coverage}% of the model — enrich this record before working it.
@@ -444,6 +513,19 @@ function IssuerDrawer({ issuer, model, onClose, onToast }) {
         </div>
 
         {full.summary && <p className="iss-summary">{full.summary}</p>}
+
+        {full.undervaluedQuote?.quote && (
+          <blockquote className="iss-quote">
+            <p>"{full.undervaluedQuote.quote}"</p>
+            <footer>
+              {full.undervaluedQuote.speaker || 'Management'}
+              {full.undervaluedQuote.date && ` · ${full.undervaluedQuote.date}`}
+              {full.undervaluedQuote.url && (
+                <> · <a href={full.undervaluedQuote.url} target="_blank" rel="noreferrer">release ↗</a></>
+              )}
+            </footer>
+          </blockquote>
+        )}
 
         <div className="iss-section">
           <h3>Why this company</h3>
@@ -479,12 +561,55 @@ function IssuerDrawer({ issuer, model, onClose, onToast }) {
           </div>
         )}
 
+        {full.releaseCount > 0 && (
+          <div className="iss-section">
+            <h3>
+              Press releases <span className="muted">· {full.releaseCount} read</span>
+            </h3>
+            <div className="iss-relstats">
+              <span><b>{full.releasesLast12m ?? '—'}</b> in 12 months</span>
+              <span><b>{full.primaryNewswire || 'no wire'}</b> distribution</span>
+              {full.newsReaction && (
+                <span title={`Median move ${(full.newsReaction.medianAbsMove * 100).toFixed(1)}%`}>
+                  <b>{full.newsReaction.flat}/{full.newsReaction.measured}</b> moved nothing
+                </span>
+              )}
+            </div>
+            <ol className="iss-timeline">
+              {(full.releases || []).slice(0, 12).map((r) => (
+                <li key={r.url}>
+                  <span className="iss-tl-date">{r.date || '—'}</span>
+                  <a href={r.url} target="_blank" rel="noreferrer">{r.title || r.url}</a>
+                  <span className="iss-tl-tags">
+                    {r.isFinancing && <em className="fin">raise</em>}
+                    {r.isIrHire && <em className="hire">IR hire</em>}
+                    {r.isCatalyst && <em className="cat">catalyst</em>}
+                    {r.agencies?.length > 0 && <em className="ag" title={r.agencies.join(', ')}>agency</em>}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            {full.releases?.length > 12 && (
+              <p className="muted sm">Showing 12 of {full.releases.length} kept on the record.</p>
+            )}
+          </div>
+        )}
+
         <div className="iss-section">
           <h3>Outreach</h3>
           <dl className="iss-kv">
             <dt>IR posture</dt><dd>{full.irPosture || '—'}</dd>
             <dt>Incumbent</dt>
-            <dd>{full.incumbentAgency ? `${full.incumbentAgency} (${full.incumbentEvidence || 'unverified'})` : 'None found'}</dd>
+            <dd>
+              {full.incumbentAgency
+                ? <>{full.incumbentAgency} <span className="muted">({full.incumbentEvidence || 'unverified'})</span>
+                    {full.incumbentEvidenceUrl && (
+                      <> · <a href={full.incumbentEvidenceUrl} target="_blank" rel="noreferrer">evidence ↗</a></>
+                    )}</>
+                : full.incumbentEvidence || 'None found'}
+            </dd>
+            <dt>Newswire</dt>
+            <dd>{full.primaryNewswire || '—'}</dd>
             <dt>IR contact</dt>
             <dd>{full.irEmail ? <a href={`mailto:${full.irEmail}`}>{full.irEmail}</a> : '—'}</dd>
             <dt>Website</dt>
@@ -513,6 +638,7 @@ function IssuerDrawer({ issuer, model, onClose, onToast }) {
           <span className="muted sm">
             {full.marketDataAt ? `Market data ${new Date(full.marketDataAt).toLocaleDateString()}` : 'Not enriched'}
             {full.siteScanAt && ` · site ${new Date(full.siteScanAt).toLocaleDateString()}`}
+            {full.releaseScanAt && ` · releases ${new Date(full.releaseScanAt).toLocaleDateString()}`}
           </span>
         </footer>
       </aside>

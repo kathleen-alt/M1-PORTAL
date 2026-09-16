@@ -35,8 +35,13 @@ Issuer intelligence pipeline
   universe    Refresh the listed-company universe   --venues NASDAQ,OTC,TSXV,CSE
   enrich      Yahoo fundamentals + StockTwits       --limit 500 --concurrency 4
   scan        Crawl company sites for IR posture    --limit 100 --concurrency 3
+  releases    Read full press-release archives      --limit 50 --max-releases 120 --min-score 55
   score       Re-score every held issuer
-  all         universe -> enrich -> scan -> score   --enrich 300 --scan 60
+  qualify     Two-pass sweep: score the universe on market data, then read the
+              websites and full release archives of everything that qualified,
+              and re-score with what that found.
+              --venues NASDAQ,OTC,TSXV,CSE --enrich 2000 --min-score 45 --deep 100
+  all         universe -> enrich -> scan -> releases -> score
   stats       What is currently held
   export      Write scored issuers to CSV           --out prospects.csv --min-score 55
 `;
@@ -72,6 +77,15 @@ async function main() {
         verbose: true,
       }));
       break;
+    case 'releases':
+      console.log(await pipeline.scanReleaseArchives({
+        limit: numFlag('limit', 50),
+        concurrency: numFlag('concurrency', 2),
+        maxReleases: numFlag('max-releases', 120),
+        minScore: flag('min-score') ? numFlag('min-score', 0) : null,
+        verbose: true,
+      }));
+      break;
     case 'scan':
       console.log(await pipeline.scanSites({
         limit: numFlag('limit', 100),
@@ -82,10 +96,20 @@ async function main() {
     case 'score':
       console.log(await pipeline.rescore({ verbose: true }));
       break;
+    case 'qualify':
+      console.log(JSON.stringify(await pipeline.qualifyAndDeepen({
+        venues: flag('venues') ? String(flag('venues')).split(',').map((x) => x.trim()) : undefined,
+        enrichLimit: numFlag('enrich', 2000),
+        minScore: numFlag('min-score', 45),
+        deepLimit: numFlag('deep', 100),
+        maxReleases: numFlag('max-releases', 120),
+      }), null, 2));
+      break;
     case 'all':
       console.log(JSON.stringify(await pipeline.runAll({
         enrichLimit: numFlag('enrich', 300),
         scanLimit: numFlag('scan', 60),
+        releaseLimit: numFlag('releases', 40),
       }), null, 2));
       break;
     case 'stats':
