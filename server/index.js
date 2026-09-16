@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
+import { router as issuersRouter } from './issuers/routes.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -542,6 +543,11 @@ app.post('/api/slack', async (req, res) => {
 });
 
 // ── Serve the built client in production ───────────────────────────────
+// ── Issuer intelligence ───────────────────────────────────
+// Tracks, filters and searches listed companies across NASDAQ / OTC / TSXV / CSE
+// and scores them against Market One's qualification model. See server/issuers/.
+app.use('/api', issuersRouter);
+
 const clientDist = path.resolve(__dirname, '../client/dist');
 app.use(express.static(clientDist));
 app.get('*', (req, res, next) => {

@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { demo, initialDemoFromUrl } from './demo';
 import { getBrand, applyTheme, BRANDS } from './brand';
+import Issuers from './Issuers';
 
 // Seed demo mode from the URL (?demo=1) before any API call runs, and paint the
 // active brand's theme before first render.
@@ -39,7 +40,7 @@ const FORMATS = [
   { id: 'reel', label: 'Reel script' },
 ];
 
-const TABS = ['Dashboard', 'Newsroom', 'Studio', 'Calendar', 'Slack'];
+const TABS = ['Dashboard', 'Newsroom', 'Issuers', 'Studio', 'Calendar', 'Slack'];
 
 function timeAgo(iso) {
   if (!iso) return '';
@@ -258,6 +259,8 @@ export default function App() {
             statuses={statuses}
           />
         )}
+
+        {tab === 'Issuers' && <Issuers onToast={flash} />}
 
         {tab === 'Studio' && (
           <Studio

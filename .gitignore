@@ -11,3 +11,10 @@ coverage/
 # Generated standalone demo artifacts (never commit)
 /MarketOne-Portal-DEMO.html
 /Bullionaire-Portal-DEMO.html
+
+# Issuer pipeline runtime state (the seed under server/data/ IS committed)
+server/data/issuers.json
+server/data/.cache/
+server/data/universe/*
+!server/data/universe/.gitkeep
+prospects*.csv

@@ -2,7 +2,7 @@
   "name": "m1-portal",
   "private": true,
   "version": "1.0.0",
-  "description": "Market One — Content Intelligence Portal. Sources real, linked financial/business news, segments into content pillars, runs AI analysis, generates on-brand copy + branded graphics, and runs an approval → publish workflow.",
+  "description": "Market One \u2014 Content Intelligence Portal. Sources real, linked financial/business news, segments into content pillars, runs AI analysis, generates on-brand copy + branded graphics, and runs an approval \u2192 publish workflow.",
   "type": "module",
   "workspaces": [
     "server",
@@ -14,7 +14,10 @@
     "dev:client": "npm --workspace client run dev",
     "build": "npm --workspace client run build",
     "start": "npm --workspace server start",
-    "lint": "echo \"(no linter configured)\""
+    "lint": "echo \"(no linter configured)\"",
+    "issuers": "npm --workspace server run issuers:all --",
+    "issuers:check": "npm --workspace server run issuers:check",
+    "issuers:stats": "npm --workspace server run issuers:stats"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

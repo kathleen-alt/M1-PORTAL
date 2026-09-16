@@ -6,7 +6,15 @@
   "main": "index.js",
   "scripts": {
     "dev": "node --watch index.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "issuers:check": "node cli/issuers.js check",
+    "issuers:universe": "node cli/issuers.js universe",
+    "issuers:enrich": "node cli/issuers.js enrich",
+    "issuers:scan": "node cli/issuers.js scan",
+    "issuers:score": "node cli/issuers.js score",
+    "issuers:all": "node cli/issuers.js all",
+    "issuers:stats": "node cli/issuers.js stats",
+    "issuers:export": "node cli/issuers.js export"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.69.0",
