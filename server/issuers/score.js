@@ -83,9 +83,58 @@ const HOT_SECTORS = [
   { id: 'cleantech', label: 'Cleantech & EV', score: 7, re: /battery|electric vehicle|\bEV\b|clean tech|hydrogen|carbon/i },
 ];
 
-export function classifySector(...fields) {
-  const hay = fields.filter(Boolean).join(' ');
-  const hit = HOT_SECTORS.find((s) => s.re.test(hay));
+// Yahoo's `industry` is the only field precise enough to classify on its own.
+// Matching everything at once put a consumer lender in biotech (its summary
+// mentions healthcare financing) and an emissions-hardware maker in mining (it
+// sells to mine fleets), so the fields are consulted in order of precision and
+// free text is a last resort, never an override.
+const INDUSTRY_MAP = [
+  ['mining', /\b(gold|silver|copper|aluminum|steel|uranium|coking coal|thermal coal|precious metals|industrial metals|metals? (&|and) mining|mining)\b/i],
+  ['energy', /\b(oil|gas|petroleum|drilling|refin|pipeline|solar|renewable utilities|uranium)\b/i],
+  ['biotech', /\b(biotechnology|drug manufactur|pharmaceutical|medical (devices|instruments|distribution|care)|diagnostics|healthcare|health information|life sciences)\b/i],
+  ['ai', /\b(semiconductor|information technology services|computer hardware|data (center|centre))\b/i],
+  ['tech', /\b(software|internet content|electronic|communication equipment|technology)\b/i],
+  ['crypto', /\b(capital markets|financial data|crypto|blockchain)\b/i],
+  ['cleantech', /\b(electrical equipment|solar|hydrogen|battery|waste management)\b/i],
+  ['defense', /\b(aerospace|defense)\b/i],
+];
+
+// A broad sector name is only decisive where it cannot mean anything else.
+// "Basic Materials" covers specialty chemicals as well as miners, and
+// "Communication Services" covers television as well as software, so neither
+// classifies on its own.
+const SECTOR_MAP = [
+  ['biotech', /^healthcare$/i],
+  ['tech', /^technology$/i],
+  ['energy', /^energy$/i],
+];
+
+/**
+ * @param {string} sector    Yahoo sector (broad)
+ * @param {string} industry  Yahoo industry (specific)
+ * @param {string} hint      exchange-supplied hint, when any
+ * @param {string} summary   business description (free text)
+ * @param {string} name      company name
+ */
+export function classifySector(sector, industry, hint, summary, name) {
+  const pick = (id) => {
+    const s = HOT_SECTORS.find((x) => x.id === id);
+    return s ? { id: s.id, label: s.label, score: s.score } : null;
+  };
+
+  for (const [id, re] of INDUSTRY_MAP) if (industry && re.test(industry)) return pick(id);
+  for (const [id, re] of SECTOR_MAP) if (sector && re.test(sector)) return pick(id);
+  if (hint) {
+    const hit = HOT_SECTORS.find((s) => s.re.test(hint));
+    if (hit) return { id: hit.id, label: hit.label, score: hit.score };
+  }
+  // Where Yahoo classified the company at all, "no hot sector matched" is an
+  // answer, not a gap: falling through to prose here is what tagged a consumer
+  // lender as biotech. Free text only rescues issuers Yahoo does not cover.
+  if (industry || sector) return { id: 'other', label: 'Other', score: 3 };
+
+  const hay = [name, summary].filter(Boolean).join(' ');
+  const hit = hay && HOT_SECTORS.find((s) => s.re.test(hay));
   return hit ? { id: hit.id, label: hit.label, score: hit.score } : { id: 'other', label: 'Other', score: 3 };
 }
 
