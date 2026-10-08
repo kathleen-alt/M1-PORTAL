@@ -21,6 +21,19 @@ export const ELIGIBILITY = {
   minMarketCap: Number(process.env.ISSUERS_MIN_MARKET_CAP || 10_000_000),
 };
 
+// The roles that can buy investor-awareness work. A contact is only reachable
+// when there is some way to start the conversation: an email, a phone number or
+// a LinkedIn profile.
+const BUYING_ROLES = new Set(['investor relations', 'corporate communications', 'chief executive']);
+
+/** Does this issuer have somebody worth calling? */
+export function hasReachableContact(issuer) {
+  const contacts = issuer.apolloContacts || [];
+  return contacts.some(
+    (c) => c && BUYING_ROLES.has(c.role) && (c.email || c.phone || c.linkedin),
+  );
+}
+
 /**
  * Apply the hard floors.
  *
@@ -52,6 +65,19 @@ export function assessEligibility(issuer) {
       `Market cap $${(issuer.marketCap / 1e6).toFixed(1)}M is under the ` +
       `$${(ELIGIBILITY.minMarketCap / 1e6).toFixed(0)}M floor`,
     );
+  }
+
+  // Reachability is a floor of its own. Investor-awareness work is bought by
+  // the person who owns the story -- the investor-relations lead, whoever runs
+  // corporate communications, or the chief executive. An issuer where the only
+  // route in is the finance office is not a prospect, however well it scores.
+  //
+  // This only applies once Apollo has actually been asked. Before that the
+  // answer is unknown, not negative, and treating it as negative would
+  // disqualify every issuer the contact sweep has not yet reached.
+  if (!issuer.apolloAt) unknown = true;
+  else if (!hasReachableContact(issuer)) {
+    reasons.push('No investor-relations, communications or CEO contact reachable — the only route in is finance');
   }
 
   return { eligible: reasons.length === 0, unknown, reasons };
