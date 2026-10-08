@@ -36,7 +36,9 @@ const TITLE_QUERY = [
 
 // A deputy or an assistant is not the principal: "Chief of Staff, Office of
 // the CEO" must not be ranked as the chief executive.
-const PROXY = /\b(chief of staff|office of the|assistant|deputy|interim deputy|executive assistant|advisor|advisory)\b/i;
+// `assist` rather than `assistant` so the German "Chefassistent des CEO" -- a
+// real result -- is caught alongside the English spellings.
+const PROXY = /(chief of staff|office of the|assist|\bdeputy\b|chef de cabinet|\badvisor\b|\badvisory\b|\bsecretary\b)/i;
 
 // "Vice President" contains "President". Matching the latter naively ranked
 // every vice president as the principal, so VP-shaped titles are detected
@@ -80,8 +82,13 @@ function rankTitle(title) {
 
   // Corporate communications: a company-level comms or PR remit, or a chief
   // marketing officer. Product and demand-gen marketing do not qualify.
-  const commsRemit = /communications|public relations|\bPR\b/i.test(t)
-    || /chief marketing officer|\bCMO\b/i.test(t);
+  // In pharma, biotech and cannabis "CMO" is a Contract Manufacturing
+  // Organization far more often than a Chief Marketing Officer -- "Quality
+  // Assurance Manager, CMO & Supplier" is a real title from this universe. Only
+  // read the abbreviation as the officer when nothing around it says otherwise.
+  const cmoIsOfficer = /chief marketing officer/i.test(t)
+    || (/\bCMO\b/.test(t) && !/\b(quality|manufactur|supplier|supply|contract|CDMO|vendor|assurance|regulatory|sourcing)\b/i.test(t));
+  const commsRemit = /communications|public relations|\bPR\b/i.test(t) || cmoIsOfficer;
   if (commsRemit && !NARROW_MARKETING.test(t) && !PROXY.test(t)) {
     return { rank: 1, label: 'corporate communications' };
   }
