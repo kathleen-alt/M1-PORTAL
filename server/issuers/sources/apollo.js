@@ -27,10 +27,11 @@ export const configured = () => Boolean(KEY());
 // small to employ one, which is most of this universe.
 const TITLE_QUERY = [
   'Investor Relations',
+  'Corporate Communications',
+  'Chief Communications Officer',
+  'Chief Marketing Officer',
   'Chief Executive Officer',
   'President',
-  'Chief Financial Officer',
-  'Corporate Communications',
 ];
 
 // A deputy or an assistant is not the principal: "Chief of Staff, Office of
@@ -48,6 +49,26 @@ const VP = /\b(vice[-\s]?president|VP|SVP|EVP|AVP)\b/i;
 const OFF_TARGET =
   /\b(engineering|quality|supply chain|procurement|human resources|people|talent|legal|counsel|compliance|security|information technology|\bIT\b|clinical|regulatory|medical|scientific|research|manufactur|production|operations|retail|sales|customer|logistics|exploration|geolog|metallurg|sustainability|facilit)\b/i;
 
+// Marketing that is not corporate communications. A product or demand-gen
+// marketer is the wrong call for investor awareness, so only a company-level
+// communications remit counts.
+const NARROW_MARKETING =
+  /\b(product|demand|growth|performance|field|channel|partner|content|digital|social|lifecycle|retail|trade|category|portfolio)\b/i;
+
+// A divisional president runs a business unit, not the company: "President,
+// Adult Use" and "President, Global Head Health & Innovation" are not the chief
+// executive. An unqualified "President" at a junior issuer usually is.
+function isDivisional(t) {
+  const after = t.split(/\bpresident\b/i)[1] || '';
+  return /^[\s]*[,|/&-]?\s*(of\s+|for\s+)?[A-Za-z]/.test(after) && !/^\s*(&|and)\s*(ceo|chief executive)/i.test(after);
+}
+
+/**
+ * Rank a title against the three roles worth contacting, best first:
+ * the investor-relations lead, then whoever owns corporate communications,
+ * then the chief executive. Everything else -- finance, operations, divisional
+ * presidents -- is not a target and returns null.
+ */
 function rankTitle(title) {
   const t = String(title || '');
 
@@ -56,18 +77,25 @@ function rankTitle(title) {
   if ((/investor/i.test(t) && /relations?/i.test(t)) || /\bIR\b/.test(t)) {
     return { rank: 0, label: 'investor relations' };
   }
-  if ((/chief executive|\bCEO\b/i.test(t)) && !PROXY.test(t)) {
-    return { rank: 1, label: 'chief executive' };
+
+  // Corporate communications: a company-level comms or PR remit, or a chief
+  // marketing officer. Product and demand-gen marketing do not qualify.
+  const commsRemit = /communications|public relations|\bPR\b/i.test(t)
+    || /chief marketing officer|\bCMO\b/i.test(t);
+  if (commsRemit && !NARROW_MARKETING.test(t) && !PROXY.test(t)) {
+    return { rank: 1, label: 'corporate communications' };
   }
-  if (/\bpresident\b/i.test(t) && !VP.test(t) && !PROXY.test(t)) {
-    return { rank: 2, label: 'president' };
+
+  if (/chief executive|\bCEO\b/i.test(t) && !PROXY.test(t)) {
+    return { rank: 2, label: 'chief executive' };
   }
-  if (/communications|public relations|marketing|brand/i.test(t)) {
-    return { rank: 3, label: 'communications' };
+
+  // An unqualified president is the chief executive at most issuers this size;
+  // a divisional one is not, and is dropped.
+  if (/\bpresident\b/i.test(t) && !VP.test(t) && !PROXY.test(t) && !isDivisional(t)) {
+    return { rank: 2, label: 'chief executive' };
   }
-  if (/chief financial|\bCFO\b/i.test(t)) {
-    return { rank: 4, label: 'finance' };
-  }
+
   return null;
 }
 
@@ -119,10 +147,10 @@ export async function searchPeople(domains, { perPage = 100, page = 1, cacheMs =
  * domain rather than by the query that found them.
  *
  * @param {object[]} people  raw search results
- * @param {number} maxPerCompany
+ * @param {number} maxPerCompany  default 1: the best of the three roles
  * @returns {Map<string, object[]>} domain -> chosen people
  */
-export function selectContacts(people, maxPerCompany = 2) {
+export function selectContacts(people, maxPerCompany = 1) {
   const byDomain = new Map();
 
   for (const p of people) {

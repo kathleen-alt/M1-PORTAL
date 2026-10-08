@@ -36,7 +36,7 @@ Issuer intelligence pipeline
   enrich      Yahoo fundamentals + StockTwits       --limit 500 --concurrency 4
   scan        Crawl company sites for IR posture    --limit 100 --concurrency 3
   releases    Read full press-release archives      --limit 50 --max-releases 120 --min-score 55
-  contacts    Decision-maker contacts from Apollo   --limit 500 --per-company 2
+  contacts    Decision-maker contacts from Apollo   --limit 500 --per-company 1
               --no-reveal to search without spending credits
   score       Re-score every held issuer
   qualify     Two-pass sweep: score the universe on market data, then read the
@@ -99,7 +99,7 @@ async function main() {
       const pipeline2 = pipeline;
       console.log(await pipeline2.apolloContacts({
         limit: numFlag('limit', 500),
-        maxPerCompany: numFlag('per-company', 2),
+        maxPerCompany: numFlag('per-company', 1),
         reveal: flag('no-reveal') !== true,
         maxAgeDays: numFlag('max-age-days', 90),
         verbose: true,

@@ -267,14 +267,14 @@ export async function scanReleaseArchives({
  * @param {object} [opts]
  * @param {string[]} [opts.keys]          limit to these issuers
  * @param {number} [opts.limit]
- * @param {number} [opts.maxPerCompany]   people to buy per issuer (default 2)
+ * @param {number} [opts.maxPerCompany]   people to buy per issuer (default 1)
  * @param {boolean} [opts.reveal]         false to search only and spend nothing
  * @param {number} [opts.maxAgeDays]      treat a contact younger than this as fresh
  */
 export async function apolloContacts({
   keys = null,
   limit = 500,
-  maxPerCompany = 2,
+  maxPerCompany = 1,
   reveal = true,
   maxAgeDays = 90,
   verbose = false,

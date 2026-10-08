@@ -129,15 +129,25 @@ print no contact at all, and page furniture ("Contact", "Learn More") matches th
 same shape as a contact block, so a scraped name is only recorded when a genuine
 job title sits beside it. Apollo fills the gap.
 
-`issuers:contacts` searches Apollo by company domain, keeps only titles worth a
-call — the investor-relations lead first, then the chief executive, president,
-communications and finance, discarding the vice presidents of quality assurance
-and supply chain that a title search otherwise returns — and reveals a work
-email for the best `--per-company` of them.
+`issuers:contacts` searches Apollo by company domain and keeps only three
+roles, in this order of preference:
+
+1. the **investor-relations lead** — however the title spells it, including
+   "Investor and Public Relations" and "Marketing and IR";
+2. whoever owns **corporate communications** — a company-level comms or PR
+   remit, or a chief marketing officer;
+3. the **chief executive** — including an unqualified "President", which is the
+   top officer at most issuers this size.
+
+Everything else is discarded, which is most of what a title search returns:
+finance, operations, the vice presidents of quality assurance and supply chain,
+product and demand-gen marketing, and divisional presidents ("President, Adult
+Use" runs a business unit, not the company). `--per-company` defaults to 1 — the
+best available of the three — and can be raised for a backup contact.
 
 Searching costs nothing: `--no-reveal` reports who would be found without
 spending a credit. Revealing one work email costs 1 credit, so a run costs about
-`prospects x --per-company` credits. An issuer whose contact was fetched within
+`prospects x --per-company` credits, so one contact each is one credit each. An issuer whose contact was fetched within
 `--max-age-days` (default 90) is skipped, so re-running a sweep does not buy the
 same person twice. Phone numbers are deliberately left to a separate stage:
 Apollo returns those asynchronously against a different credit pool.
