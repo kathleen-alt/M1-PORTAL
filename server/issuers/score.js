@@ -83,6 +83,59 @@ export function assessEligibility(issuer) {
   return { eligible: reasons.length === 0, unknown, reasons };
 }
 
+// ── Which product fits ───────────────────────────────────────────────────────
+// Market One sells two shapes of work. A junior, pre-revenue issuer with no
+// in-house marketing buys a full package. An issuer that already funds a comms
+// function buys supplementary one-off content and awareness pieces.
+//
+// Market cap alone does not separate them. Anchored on real figures: Lundin Gold
+// (C$22B, C$2.0B revenue) and Wesdome (C$5B) are large producers, but Lucara
+// Diamond runs marketing in house on a C$261M cap -- smaller than much of this
+// prospect list -- because C$148M of revenue funds it. Meanwhile NexGen (C$9B)
+// and Sabina (C$3B) are pre-revenue and certainly staffed. Revenue catches
+// Lucara; market cap catches NexGen. Either one means the mandate is a
+// supplement rather than a full package.
+export const SERVICE = {
+  revenueCad: Number(process.env.ISSUERS_SUPPLEMENT_REVENUE_CAD || 50e6),
+  marketCapCad: Number(process.env.ISSUERS_SUPPLEMENT_CAP_CAD || 500e6),
+  // Thresholds are stated in Canadian dollars, so a USD listing has to be
+  // converted or a US$400M issuer is judged against a C$500M line and misfiled.
+  usdCad: Number(process.env.ISSUERS_USDCAD || 1.403),
+};
+
+/** Convert a figure to CAD so one threshold can serve every listing currency. */
+export function toCad(value, currency) {
+  if (value == null) return null;
+  const c = String(currency || '').toUpperCase();
+  if (c === 'CAD') return value;
+  if (c === 'USD' || c === '') return value * SERVICE.usdCad;
+  return value;
+}
+
+/**
+ * Which engagement an issuer fits.
+ *
+ * @returns {{tier:'supplement'|'full-package'|'unknown', why:string|null,
+ *            revenueCad:number|null, marketCapCad:number|null}}
+ */
+export function serviceTier(issuer) {
+  const rev = toCad(issuer.revenue, issuer.currency);
+  const cap = toCad(issuer.marketCap, issuer.currency);
+  if (rev == null && cap == null) return { tier: 'unknown', why: null, revenueCad: null, marketCapCad: null };
+
+  const m = (v) => `C$${(v / 1e6).toFixed(0)}M`;
+  if (rev != null && rev >= SERVICE.revenueCad) {
+    return { tier: 'supplement', why: `producing — ${m(rev)} revenue`, revenueCad: rev, marketCapCad: cap };
+  }
+  if (cap != null && cap >= SERVICE.marketCapCad) {
+    return { tier: 'supplement', why: `${m(cap)} market cap`, revenueCad: rev, marketCapCad: cap };
+  }
+  const bits = [];
+  if (cap != null) bits.push(`${m(cap)} cap`);
+  if (rev != null) bits.push(rev > 0 ? `${m(rev)} revenue` : 'pre-revenue');
+  return { tier: 'full-package', why: bits.join(', ') || null, revenueCad: rev, marketCapCad: cap };
+}
+
 /** Cap bands used for peer grouping and for the affordability test. */
 export const CAP_BANDS = [
   { id: 'nano', label: 'Nano (<$50M)', max: 50e6 },

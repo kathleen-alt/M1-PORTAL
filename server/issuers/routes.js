@@ -13,7 +13,8 @@ import express from 'express';
 import * as store from './store.js';
 import * as pipeline from './pipeline.js';
 import { toCsv, toRow } from './normalize.js';
-import { TEST_META, CAP_BANDS, MIN_COVERAGE, ELIGIBILITY } from './score.js';
+import { TEST_META, CAP_BANDS, MIN_COVERAGE, ELIGIBILITY, serviceTier, hasReachableContact, SERVICE } from './score.js';
+import * as clients from './clients.js';
 
 export const router = express.Router();
 
@@ -38,7 +39,28 @@ const SORTS = {
   releases: (a, b) => (b.releaseCount ?? -1) - (a.releaseCount ?? -1),
   noReaction: (a, b) => (b.newsReaction?.flatShare ?? -1) - (a.newsReaction?.flatShare ?? -1),
   lastRelease: (a, b) => String(b.latestRelease || '').localeCompare(String(a.latestRelease || '')),
+  package: (a, b) => String(serviceTier(a).tier).localeCompare(String(serviceTier(b).tier)),
+  // Reachable first, then richest contact: a named person with an email beats a
+  // phone-only record, which beats nothing.
+  contact: (a, b) => contactRank(b) - contactRank(a),
+  closedRaise: (a, b) => String(latestClosed(b) || '').localeCompare(String(latestClosed(a) || '')),
 };
+
+const latestClosed = (it) => (it.closedFinancings || [])
+  .map((f) => f.date).filter(Boolean).sort().pop() || null;
+
+function contactRank(it) {
+  const c = it.apolloPrimary || (it.apolloContacts || [])[0];
+  if (!c) return 0;
+  let n = 1;
+  if (c.name) n += 1;
+  if (c.linkedin) n += 1;
+  if (c.phone) n += 2;
+  if (c.email) n += 4;
+  if (c.role === 'investor relations') n += 2;
+  else if (c.role === 'corporate communications') n += 1;
+  return n;
+}
 
 /** Apply every filter in the query string to the held universe. */
 function applyFilters(issuers, q) {
@@ -68,6 +90,15 @@ function applyFilters(issuers, q) {
   const enrichedOnly = q.enriched === '1' || q.enriched === 'true';
   const excludeProvisional = q.verified === '1' || q.verified === 'true';
 
+  const packages = listParam(q.package);              // full-package | supplement
+  const roles = listParam(q.contactRole);             // investor relations | corporate communications | chief executive
+  const reachableOnly = q.reachable === '1' || q.reachable === 'true';
+  const closedRaiseOnly = q.closedRaise === '1' || q.closedRaise === 'true';
+  const noSocialOnly = q.noSocial === '1' || q.noSocial === 'true';
+  const hasEmailOnly = q.hasEmail === '1' || q.hasEmail === 'true';
+  // Clients are hidden by default: the mandate is already taken.
+  const includeClients = q.includeClients === '1' || q.includeClients === 'true';
+
   return issuers.filter((it) => {
     if (exchanges && !exchanges.includes(it.exchange)) return false;
     if (sectors && !sectors.includes(it.sectorGroup)) return false;
@@ -91,6 +122,20 @@ function applyFilters(issuers, q) {
     if (hasReleases && !it.releaseCount) return false;
     if (newswire && !newswire.includes(it.primaryNewswire)) return false;
     if (hasContact && !(it.irEmail || it.linkedin)) return false;
+
+    if (!includeClients && it.isClient) return false;
+    if (packages && !packages.includes(serviceTier(it).tier)) return false;
+    if (reachableOnly && !(it.apolloAt && hasReachableContact(it))) return false;
+    if (roles) {
+      const have = (it.apolloContacts || []).map((c) => c && c.role).filter(Boolean);
+      if (!have.some((r) => roles.includes(r))) return false;
+    }
+    if (hasEmailOnly && !(it.apolloContacts || []).some((c) => c && c.email)) return false;
+    if (closedRaiseOnly && !(it.closedFinancings || []).length) return false;
+    if (noSocialOnly) {
+      const s2 = it.social;
+      if (!s2?.scannedAt || s2.linkedin || s2.x || s2.youtube) return false;
+    }
     if (enrichedOnly && !it.marketDataAt) return false;
     if (excludeProvisional && it.fit?.provisional !== false) return false;
 
@@ -104,7 +149,7 @@ function applyFilters(issuers, q) {
 
 router.get('/issuers', async (req, res) => {
   try {
-    const all = await store.all();
+    const all = await clients.tag(await store.all());
     const filtered = applyFilters(all, req.query);
     const sort = SORTS[req.query.sort] || SORTS.score;
     filtered.sort(sort);
@@ -127,7 +172,8 @@ router.get('/issuers', async (req, res) => {
 
 router.get('/issuers/facets', async (_req, res) => {
   try {
-    const all = await store.all();
+    const all = await clients.tag(await store.all());
+    const roster = await clients.load();
     const count = (key) => {
       const out = {};
       for (const it of all) {
@@ -158,6 +204,33 @@ router.get('/issuers/facets', async (_req, res) => {
         withQuote: all.filter((i) => i.undervaluedQuote?.quote).length,
         withRecentRaise: all.filter((i) => i.latestFinancing?.date).length,
       },
+      // Which engagement each issuer fits, and whether anyone is callable.
+      packages: count((it) => serviceTier(it).tier === 'unknown' ? null : serviceTier(it).tier),
+      serviceThresholds: SERVICE,
+      contactRoles: count((it) => (it.apolloPrimary || (it.apolloContacts || [])[0] || {}).role),
+      contactCoverage: {
+        searched: all.filter((i) => i.apolloAt).length,
+        reachable: all.filter((i) => i.apolloAt && hasReachableContact(i)).length,
+        // Searched, but nobody in investor relations, communications or the
+        // chief executive seat — disqualified by the reachability floor.
+        unreachable: all.filter((i) => i.apolloAt && !hasReachableContact(i)).length,
+        withEmail: all.filter((i) => (i.apolloContacts || []).some((c) => c && c.email)).length,
+        withPhone: all.filter((i) => (i.apolloContacts || []).some((c) => c && c.phone)).length,
+        notSearched: all.filter((i) => !i.apolloAt).length,
+      },
+      clients: {
+        roster: roster.rows.length,
+        unresolved: roster.rows.filter((r) => !r.resolved).map((r) => r.company),
+        matched: all.filter((i) => i.isClient).length,
+        file: roster.loadedFrom,
+      },
+      raises: {
+        withClosed: all.filter((i) => (i.closedFinancings || []).length).length,
+      },
+      social: {
+        scanned: all.filter((i) => i.social?.scannedAt).length,
+        none: all.filter((i) => i.social?.scannedAt && !(i.social.linkedin || i.social.x || i.social.youtube)).length,
+      },
       bandMeta: CAP_BANDS,
       stats: await store.stats(),
     });
@@ -168,7 +241,7 @@ router.get('/issuers/facets', async (_req, res) => {
 
 router.get('/issuers/export.csv', async (req, res) => {
   try {
-    const all = await store.all();
+    const all = await clients.tag(await store.all());
     const rows = applyFilters(all, req.query).sort(SORTS[req.query.sort] || SORTS.score);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="market-one-prospects-${new Date().toISOString().slice(0, 10)}.csv"`);

@@ -4,7 +4,7 @@
 // describe the same company differently. Everything downstream — scoring, the
 // API, the CSV export — reads the shape defined here and nothing else.
 
-import { capBand, classifySector } from './score.js';
+import { capBand, classifySector, serviceTier, hasReachableContact } from './score.js';
 import { yahooSymbol } from './sources/yahoo.js';
 import { stocktwitsSymbol } from './sources/stocktwits.js';
 
@@ -193,6 +193,28 @@ export function applyReleaseScan(issuer, scan, signals) {
   return next;
 }
 
+/**
+ * Is this listing an operating company rather than a derivative of one?
+ *
+ * Nasdaq spells the instrument out in the security name; TMX and the CSE lean on
+ * a ticker suffix instead, which is why the name-only test let 484 warrants,
+ * debentures and rights onto the Canadian boards. Both forms are checked here so
+ * every adapter applies the same rule.
+ *
+ * Deliberately NOT excluded: a `.P` capital-pool company and a `.U`
+ * US-dollar-denominated class are real listings of real companies, not
+ * derivatives of them.
+ */
+const NON_EQUITY_NAME =
+  /\b(warrant|warrants|right|rights|unit|units|preferred|depositary|debenture|debentures|note[s]?\s+due|ETF|ETN|Trust Units|Index|% Series)\b|\bdb\d{1,2}[a-z]{3}\d{4}\b/i;
+const NON_EQUITY_SYMBOL = /\.(WT|WS|WW|WR|RT|DB|PR)[A-Z0-9]*$/i;
+
+export function isOperatingCompany(name = '', symbol = '') {
+  if (NON_EQUITY_NAME.test(String(name))) return false;
+  if (NON_EQUITY_SYMBOL.test(String(symbol))) return false;
+  return true;
+}
+
 /** Columns for the CSV export, mirroring the POC workbook's layout. */
 export const EXPORT_COLUMNS = [
   ['symbol', 'Symbol'],
@@ -226,6 +248,21 @@ export const EXPORT_COLUMNS = [
   ['newsNoReactionPct', 'News No Reaction'],
   ['latestFinancingText', 'Raise Closed'],
   ['undervaluedQuoteText', 'CEO Undervalued Quote'],
+  ['serviceTier', 'Package Fit'],
+  ['serviceWhy', 'Why That Package'],
+  ['contactName', 'Contact'],
+  ['contactTitle', 'Contact Title'],
+  ['contactRole', 'Contact Role'],
+  ['contactEmail', 'Contact Email'],
+  ['contactPhone', 'Contact Phone'],
+  ['contactLinkedin', 'Contact LinkedIn'],
+  ['contactCaveat', 'Contact Caveat'],
+  ['closedRaiseDate', 'Closed Raise (date)'],
+  ['closedRaiseText', 'Closed Raise'],
+  ['socialLinkedinFollowers', 'LinkedIn Followers'],
+  ['socialYoutubeSubs', 'YouTube Subs'],
+  ['socialStocktwits30d', 'StockTwits msgs (30d)'],
+  ['socialOutlets', 'Outlets / Newswire'],
   ['fitScore', 'Fit Score'],
   ['fitTier', 'Tier'],
   ['fitReasons', 'Why this company is a good fit for Market One'],
@@ -234,6 +271,12 @@ export const EXPORT_COLUMNS = [
 /** Flatten a scored issuer into the export/table row shape. */
 export function toRow(it) {
   const burn = it.operatingCashflow != null && it.operatingCashflow < 0 ? -it.operatingCashflow : null;
+  const svc = serviceTier(it);
+  // Apollo supersedes the scraped footer contact; the footer is kept on the
+  // record for comparison but the row shows whoever is actually callable.
+  const contact = it.apolloPrimary || (it.apolloContacts || [])[0] || null;
+  const closed = (it.closedFinancings || []).slice()
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   return {
     ...it,
     summaryShort: it.summary ? `${it.summary.split(/(?<=\.)\s/)[0]}`.slice(0, 220) : null,
@@ -251,6 +294,39 @@ export function toRow(it) {
     fitScore: it.fit?.score ?? null,
     fitTier: it.fit?.tier ?? null,
     fitReasons: it.fit?.reasons?.join(' | ') ?? null,
+
+    // Which engagement fits, and whether there is anybody to sell it to.
+    serviceTier: svc.tier === 'unknown' ? null : svc.tier,
+    serviceWhy: svc.why,
+    reachable: it.apolloAt ? hasReachableContact(it) : null,
+    contactName: contact?.name ?? null,
+    contactTitle: contact?.title ?? null,
+    contactRole: contact?.role ?? null,
+    contactEmail: contact?.email ?? null,
+    contactEmailStatus: contact?.emailStatus ?? null,
+    contactPhone: contact?.phone ?? null,
+    contactLinkedin: contact?.linkedin ?? null,
+    contactCaveat: contact?.note ?? (contact?.catchall ? 'catch-all domain — "verified" only means the server accepts mail' : null),
+    contactSource: contact ? (contact.source || 'apollo') : (it.irContact?.people?.[0]?.name ? 'release footer' : null),
+
+    // Closed raises, newest first.
+    closedRaiseCount: closed.length,
+    closedRaiseDate: closed[0]?.date ?? null,
+    closedRaiseText: closed[0]
+      ? [closed[0].amount, closed[0].type, closed[0].tranche && `${closed[0].tranche} tranche`]
+        .filter(Boolean).join(' · ')
+      : null,
+    closedRaiseUrl: closed[0]?.url ?? null,
+
+    // Owned audience.
+    socialLinkedinFollowers: it.social?.linkedinFollowers ?? null,
+    socialYoutubeSubs: it.social?.youtubeSubs ?? null,
+    socialYoutubeUploads90d: it.social?.youtubeUploads90d ?? null,
+    socialStocktwits30d: it.social?.stocktwits?.msgs30d ?? null,
+    socialOutlets: (it.social?.outlets || []).join(' · ') || null,
+    socialNone: it.social?.scannedAt
+      ? !(it.social.linkedin || it.social.x || it.social.youtube)
+      : null,
   };
 }
 

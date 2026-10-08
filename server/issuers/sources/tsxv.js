@@ -4,6 +4,7 @@
 // first letter, so a full universe is 36 paged calls rather than a scrape.
 
 import { getJson, readOverride, parseCsv } from '../http.js';
+import { isOperatingCompany } from '../normalize.js';
 
 const BASE = process.env.TMX_DIRECTORY_BASE || 'https://www.tsx.com/json/company-directory/search';
 const LETTERS = '0ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -19,7 +20,8 @@ function fromCsv(text, exchange) {
       country: 'CA',
       source: 'tmx-csv',
     }))
-    .filter((r) => r.symbol && r.name);
+    .filter((r) => r.symbol && r.name)
+    .filter((r) => isOperatingCompany(r.name, r.symbol));
 }
 
 /**
@@ -79,7 +81,7 @@ export async function fetchUniverse({ venue = 'tsxv' } = {}) {
     throw err;
   }
 
-  return [...seen.values()].filter((r) => r.name);
+  return [...seen.values()].filter((r) => r.name).filter((r) => isOperatingCompany(r.name, r.symbol));
 }
 
 export const meta = {

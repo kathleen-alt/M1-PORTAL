@@ -297,7 +297,9 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 }
 
 .iss-table-wrap { overflow-x: auto; }
-.iss-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+/* The contact and package columns push the grid past the panel; a min-width
+   lets .iss-table-wrap scroll instead of clipping the right-hand columns. */
+.iss-table { width: 100%; min-width: 1240px; border-collapse: collapse; font-size: 13px; }
 .iss-table th {
   text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--muted-2); font-weight: 600; padding: 11px 10px; border-bottom: 1px solid var(--line);
@@ -431,3 +433,22 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 .iss-tl-tags .ag { color: var(--muted); }
 
 .iss-hint { font-size: 11px; color: var(--muted-2); line-height: 1.45; }
+
+
+/* ── Issuers: package fit, contact, raise ──────────────────────────────── */
+.iss-pkg {
+  display: inline-block; padding: 1px 7px; border-radius: 4px;
+  font-size: .68rem; font-weight: 600; white-space: nowrap;
+}
+.iss-pkg.full-package { background: var(--accent-soft, rgba(190,150,60,.16)); color: var(--accent, #8a5f16); }
+.iss-pkg.supplement   { background: rgba(127,127,127,.14); color: inherit; opacity: .85; }
+
+.iss-contact { max-width: 11.5rem; overflow: hidden; }
+.iss-contact strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iss-contact .iss-ex { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iss-contact strong { font-weight: 600; }
+.iss-raise { font-variant-numeric: tabular-nums; font-size: .78rem; }
+.iss-caveat { font-size: .74rem; font-style: italic; opacity: .8; margin-top: 2px; }
+.warn-text { color: #b4442f; }
+.pill-n { margin-left: 5px; opacity: .6; font-variant-numeric: tabular-nums; }
+@media (prefers-color-scheme: dark) { .warn-text { color: #e66767; } }

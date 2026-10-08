@@ -18,6 +18,9 @@ const SORTS = [
   { id: 'marketCap', label: 'Market cap' },
   { id: 'noReaction', label: 'News, no reaction' },
   { id: 'lastRelease', label: 'Most recent release' },
+  { id: 'contact', label: 'Best contact first' },
+  { id: 'closedRaise', label: 'Most recent raise' },
+  { id: 'package', label: 'Package fit' },
   { id: 'symbol', label: 'Symbol A-Z' },
 ];
 
@@ -27,6 +30,13 @@ const VOLUME_CAPS = [
   { id: '1000000', label: 'Under $1M/day' },
   { id: '5000000', label: 'Under $5M/day' },
 ];
+
+// Short labels for the three roles worth calling.
+const ROLE_SHORT = {
+  'investor relations': 'IR lead',
+  'corporate communications': 'Comms',
+  'chief executive': 'CEO',
+};
 
 const CAP_RANGES = [
   { id: '', label: 'Any size', min: '', max: '' },
@@ -99,6 +109,13 @@ export default function Issuers({ onToast }) {
   const [recentRaise, setRecentRaise] = useState(false);
   const [noReaction, setNoReaction] = useState(false);
   const [includeIneligible, setIncludeIneligible] = useState(false);
+  const [pkg, setPkg] = useState([]);                 // full-package | supplement
+  const [contactRole, setContactRole] = useState([]); // IR | comms | CEO
+  const [reachable, setReachable] = useState(false);
+  const [hasEmail, setHasEmail] = useState(false);
+  const [closedRaise, setClosedRaise] = useState(false);
+  const [noSocial, setNoSocial] = useState(false);
+  const [includeClients, setIncludeClients] = useState(false);
 
   const pageSize = 50;
   const debounce = useRef(null);
@@ -123,9 +140,17 @@ export default function Issuers({ onToast }) {
     if (recentRaise) p.recentRaise = '1';
     if (noReaction) p.noReaction = '1';
     if (includeIneligible) p.includeIneligible = '1';
+    if (pkg.length) p.package = pkg.join(',');
+    if (contactRole.length) p.contactRole = contactRole.join(',');
+    if (reachable) p.reachable = '1';
+    if (hasEmail) p.hasEmail = '1';
+    if (closedRaise) p.closedRaise = '1';
+    if (noSocial) p.noSocial = '1';
+    if (includeClients) p.includeClients = '1';
     return p;
   }, [q, exchange, sector, tier, sort, maxVolume, capRange, minDrawdown, minScore, minWatchers,
-      noAgency, hasContact, verified, hasQuote, recentRaise, noReaction, includeIneligible, page]);
+      noAgency, hasContact, verified, hasQuote, recentRaise, noReaction, includeIneligible,
+      pkg, contactRole, reachable, hasEmail, closedRaise, noSocial, includeClients, page]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,7 +179,8 @@ export default function Issuers({ onToast }) {
   }, [load]);
 
   useEffect(() => { setPage(1); }, [q, exchange, sector, tier, maxVolume, capRange, minDrawdown, minScore,
-    minWatchers, noAgency, hasContact, verified, hasQuote, recentRaise, noReaction, includeIneligible]);
+    minWatchers, noAgency, hasContact, verified, hasQuote, recentRaise, noReaction, includeIneligible,
+    pkg, contactRole, reachable, hasEmail, closedRaise, noSocial, includeClients]);
 
   const loadFacets = useCallback(async () => {
     try {
@@ -172,6 +198,8 @@ export default function Issuers({ onToast }) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
 
   const reset = () => {
+    setPkg([]); setContactRole([]); setReachable(false); setHasEmail(false);
+    setClosedRaise(false); setNoSocial(false); setIncludeClients(false);
     setQ(''); setExchange([]); setSector([]); setTier([]); setMaxVolume(''); setCapRange('');
     setMinDrawdown(''); setMinScore(''); setMinWatchers(''); setNoAgency(false); setHasContact(false); setVerified(false);
     setHasQuote(false); setRecentRaise(false); setNoReaction(false); setIncludeIneligible(false);
@@ -335,6 +363,56 @@ export default function Issuers({ onToast }) {
           </label>
 
           <div className="iss-group">
+            <span className="iss-label">Package fit</span>
+            <div className="iss-pills">
+              {[['full-package', 'Full package'], ['supplement', 'Supplement / one-off']].map(([id, label]) => (
+                <button key={id} className={`pill sm ${pkg.includes(id) ? 'active' : ''}`}
+                  onClick={() => toggle(pkg, setPkg, id)}>
+                  {label}{facets?.packages?.[id] ? <span className="pill-n">{facets.packages[id]}</span> : null}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="iss-group">
+            <span className="iss-label">Who you'd call</span>
+            <div className="iss-pills">
+              {[['investor relations', 'IR lead'],
+                ['corporate communications', 'Comms'],
+                ['chief executive', 'CEO']].map(([id, label]) => (
+                <button key={id} className={`pill sm ${contactRole.includes(id) ? 'active' : ''}`}
+                  onClick={() => toggle(contactRole, setContactRole, id)}>
+                  {label}{facets?.contactRoles?.[id] ? <span className="pill-n">{facets.contactRoles[id]}</span> : null}
+                </button>
+              ))}
+            </div>
+            <label className="iss-check">
+              <input type="checkbox" checked={reachable} onChange={(e) => setReachable(e.target.checked)} />
+              <span>Reachable contact confirmed</span>
+            </label>
+            <label className="iss-check">
+              <input type="checkbox" checked={hasEmail} onChange={(e) => setHasEmail(e.target.checked)} />
+              <span>Has an email address</span>
+            </label>
+          </div>
+
+          <div className="iss-group">
+            <span className="iss-label">Signals</span>
+            <label className="iss-check">
+              <input type="checkbox" checked={closedRaise} onChange={(e) => setClosedRaise(e.target.checked)} />
+              <span>Closed a financing</span>
+            </label>
+            <label className="iss-check">
+              <input type="checkbox" checked={noSocial} onChange={(e) => setNoSocial(e.target.checked)} />
+              <span>No social presence at all</span>
+            </label>
+            <label className="iss-check">
+              <input type="checkbox" checked={includeClients} onChange={(e) => setIncludeClients(e.target.checked)} />
+              <span>Show current clients</span>
+            </label>
+          </div>
+
+          <div className="iss-group">
             <span className="iss-label">From press releases</span>
             <label className="iss-check">
               <input type="checkbox" checked={hasQuote} onChange={(e) => setHasQuote(e.target.checked)} />
@@ -388,6 +466,7 @@ export default function Issuers({ onToast }) {
                   <th>Fit</th><th>Symbol</th><th>Company</th><th>Sector</th>
                   <th className="num">Mkt cap</th><th className="num">$ Vol/day</th>
                   <th className="num">Drawdown</th><th className="num">Watchers</th>
+                  <th>Package</th><th>Who to call</th><th className="num">Raise</th>
                   <th className="num">Releases</th><th>IR posture</th>
                 </tr>
               </thead>
@@ -408,6 +487,33 @@ export default function Issuers({ onToast }) {
                     <td className="num">{usd(r.marketCap)}</td>
                     <td className="num">{usd(r.avgDollarVolume3m)}</td>
                     <td className={`num ${r.drawdownPct != null && r.drawdownPct <= -0.6 ? 'bad' : ''}`}>{pct(r.drawdownPct)}</td>
+                    <td className="num" title={r.dollarPerWatcher != null ? `$${r.dollarPerWatcher.toFixed(1)} traded per watcher` : ''}>
+                      {r.watchers != null ? r.watchers.toLocaleString() : <span className="muted">—</span>}
+                    </td>
+                    <td>
+                      {r.serviceTier
+                        ? <span className={`iss-pkg ${r.serviceTier}`} title={r.serviceWhy || ''}>
+                            {r.serviceTier === 'full-package' ? 'Full' : 'Supp'}
+                          </span>
+                        : <span className="muted">—</span>}
+                    </td>
+                    <td className="iss-contact">
+                      {r.contactName
+                        ? <>
+                            <strong>{r.contactName}</strong>
+                            {r.contactCaveat && <span className="iss-flag" title={r.contactCaveat}>check</span>}
+                            <div className="iss-ex" title={r.contactTitle || ''}>
+                              {ROLE_SHORT[r.contactRole] || r.contactRole || ''}
+                              {r.contactEmail ? ' · email' : r.contactPhone ? ' · phone' : r.contactLinkedin ? ' · LinkedIn' : ''}
+                            </div>
+                          </>
+                        : r.reachable === false
+                          ? <span className="iss-tag warn" title="Searched: nobody in investor relations, communications or the chief executive seat">no route in</span>
+                          : <span className="muted">not looked up</span>}
+                    </td>
+                    <td className="num" title={r.closedRaiseText || ''}>
+                      {r.closedRaiseDate ? <span className="iss-raise">{r.closedRaiseDate}</span> : <span className="muted">—</span>}
+                    </td>
                     <td className="num" title={r.latestRelease ? `Latest ${r.latestRelease}` : ''}>
                       {r.releaseCount
                         ? <>{r.releasesLast12m ?? r.releaseCount}{r.newsReaction?.flatShare >= 0.6 && <span className="iss-flat" title="Announcements move neither price nor volume">·flat</span>}</>
@@ -422,7 +528,7 @@ export default function Issuers({ onToast }) {
                   </tr>
                 ))}
                 {!rows.length && (
-                  <tr><td colSpan={10} className="empty">
+                  <tr><td colSpan={13} className="empty">
                     {loading || !loaded ? 'Loading…' : 'No issuers match these filters.'}
                   </td></tr>
                 )}
@@ -598,6 +704,54 @@ function IssuerDrawer({ issuer, model, onClose, onToast }) {
         <div className="iss-section">
           <h3>Outreach</h3>
           <dl className="iss-kv">
+            <dt>Package fit</dt>
+            <dd>{full.serviceTier
+              ? <>{full.serviceTier === 'full-package' ? 'Full package' : 'Supplement / one-off'}
+                  {full.serviceWhy && <span className="muted"> ({full.serviceWhy})</span>}</>
+              : '—'}</dd>
+            <dt>Who to call</dt>
+            <dd>
+              {full.contactName
+                ? <>
+                    <strong>{full.contactName}</strong>
+                    {full.contactTitle && <> — {full.contactTitle}</>}
+                    {full.contactRole && <span className="muted"> ({ROLE_SHORT[full.contactRole] || full.contactRole})</span>}
+                    <div>
+                      {full.contactEmail
+                        ? <a href={`mailto:${full.contactEmail}`}>{full.contactEmail}</a>
+                        : <span className="muted">no email on file</span>}
+                      {full.contactEmailStatus && <span className="muted"> · {full.contactEmailStatus}</span>}
+                    </div>
+                    {full.contactPhone && <div>{full.contactPhone}</div>}
+                    {full.contactLinkedin && <div><a href={full.contactLinkedin} target="_blank" rel="noopener">LinkedIn</a></div>}
+                    {full.contactCaveat && <div className="iss-caveat">{full.contactCaveat}</div>}
+                    <div className="muted">source: {full.contactSource || 'unknown'}</div>
+                  </>
+                : full.reachable === false
+                  ? <span className="warn-text">No investor-relations, communications or CEO contact reachable — the only route in is finance, so this is not a target.</span>
+                  : <span className="muted">Not looked up yet.</span>}
+            </dd>
+            {full.closedRaiseDate && (
+              <>
+                <dt>Closed raise</dt>
+                <dd>
+                  {full.closedRaiseText || 'financing'} <span className="muted">· {full.closedRaiseDate}</span>
+                  {full.closedRaiseUrl && <> · <a href={full.closedRaiseUrl} target="_blank" rel="noopener">source</a></>}
+                </dd>
+              </>
+            )}
+            <dt>Owned audience</dt>
+            <dd>
+              {[full.socialLinkedinFollowers != null && `LinkedIn ${full.socialLinkedinFollowers.toLocaleString()}`,
+                full.socialYoutubeSubs != null && `YouTube ${full.socialYoutubeSubs.toLocaleString()}`,
+                full.socialYoutubeUploads90d ? `${full.socialYoutubeUploads90d} uploads/90d` : null,
+                full.socialStocktwits30d ? `StockTwits ${full.socialStocktwits30d}/30d` : null,
+               ].filter(Boolean).join(' · ')
+                || (full.socialNone === true
+                  ? <span className="warn-text">No LinkedIn, X or YouTube found</span>
+                  : <span className="muted">not scanned</span>)}
+              {full.socialOutlets && <div className="muted">Outlets: {full.socialOutlets}</div>}
+            </dd>
             <dt>IR posture</dt><dd>{full.irPosture || '—'}</dd>
             <dt>Incumbent</dt>
             <dd>

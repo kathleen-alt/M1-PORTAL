@@ -10,6 +10,7 @@
 // expects.
 
 import { get, getJson, readOverride, parseCsv } from '../http.js';
+import { isOperatingCompany } from '../normalize.js';
 
 // Tried in order. The webapi route is what the live directory page calls; the
 // rest are older shapes kept as fallbacks because the CSE has moved this
@@ -108,7 +109,7 @@ export function parseHtmlTable(html) {
 
 export async function fetchUniverse() {
   const override = await readOverride('cse.csv');
-  if (override) return parseCsv(override).map(normalize).filter(Boolean);
+  if (override) return parseCsv(override).map(normalize).filter(Boolean).filter((r) => isOperatingCompany(r.name, r.symbol));
 
   const errors = [];
   for (const url of CANDIDATES) {
@@ -129,7 +130,7 @@ export async function fetchUniverse() {
         }
       }
       const mapped = rows.map(normalize).filter(Boolean);
-      if (mapped.length) return mapped;
+      if (mapped.length) return mapped.filter((r) => isOperatingCompany(r.name, r.symbol));
       errors.push(`${url}: parsed 0 rows`);
     } catch (err) {
       errors.push(`${url}: ${err.message}`);
