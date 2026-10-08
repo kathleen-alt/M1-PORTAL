@@ -102,8 +102,10 @@ qualification model, and lets you filter, search and export the result.
 
 ### Where the data comes from
 
-Every source is public and needs no API key. Each one can be replaced by a local
-file, which matters when a corporate network blocks a host or an endpoint moves.
+Every source is public and needs no API key, with one optional exception:
+Apollo.io, which supplies contacts and needs `APOLLO_API_KEY`. The sweep runs
+without it. Each public source can be replaced by a local file, which matters
+when a corporate network blocks a host or an endpoint moves.
 
 | Layer | Source | Local override |
 | --- | --- | --- |
@@ -115,9 +117,30 @@ file, which matters when a corporate network blocks a host or an endpoint moves.
 | Retail awareness | StockTwits watcher counts | — |
 | IR posture | The company's own website | — |
 | Press releases | The company's full release archive, found via `sitemap.xml`, RSS/Atom, or paginated news indexes | — |
+| Contacts | Apollo.io — investor-relations lead and chief executive per issuer (needs `APOLLO_API_KEY`; search is free, 1 credit per revealed email) | — |
 
 Test-issues, ETFs, warrants, units and preferreds are filtered out of the
 universe — the list is operating companies only.
+
+#### Contacts, and what they cost
+
+Press-release footers name somebody for roughly a third of issuers; the rest
+print no contact at all, and page furniture ("Contact", "Learn More") matches the
+same shape as a contact block, so a scraped name is only recorded when a genuine
+job title sits beside it. Apollo fills the gap.
+
+`issuers:contacts` searches Apollo by company domain, keeps only titles worth a
+call — the investor-relations lead first, then the chief executive, president,
+communications and finance, discarding the vice presidents of quality assurance
+and supply chain that a title search otherwise returns — and reveals a work
+email for the best `--per-company` of them.
+
+Searching costs nothing: `--no-reveal` reports who would be found without
+spending a credit. Revealing one work email costs 1 credit, so a run costs about
+`prospects x --per-company` credits. An issuer whose contact was fetched within
+`--max-age-days` (default 90) is skipped, so re-running a sweep does not buy the
+same person twice. Phone numbers are deliberately left to a separate stage:
+Apollo returns those asynchronously against a different credit pool.
 
 ### Running it
 
@@ -125,6 +148,8 @@ universe — the list is operating companies only.
 npm run issuers:check                  # which sources answer from your network
 npm run issuers                        # universe -> enrich -> scan -> score
 npm run issuers:stats                  # what is currently held
+npm run issuers:contacts -- --no-reveal   # who Apollo would find, spending nothing
+npm run issuers:contacts -- --per-company 2  # buy the IR lead + CEO per issuer
 ```
 
 Each stage is separately runnable, because a full four-venue universe is tens of

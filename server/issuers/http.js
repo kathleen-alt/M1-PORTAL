@@ -146,6 +146,81 @@ export async function get(url, opts = {}) {
   throw lastErr;
 }
 
+/**
+ * Throttled, retrying, optionally-cached POST returning parsed JSON.
+ *
+ * Apollo's search and enrichment endpoints are POST, so `get()` cannot serve
+ * them. The request body participates in the cache key, which keeps a cached
+ * search for one set of filters from answering a different one.
+ *
+ * @param {string} url
+ * @param {object} body            JSON request body
+ * @param {object} [opts]
+ * @param {object} [opts.headers]
+ * @param {number} [opts.cacheMs]  serve from disk cache when younger than this
+ * @param {number} [opts.timeoutMs]
+ * @param {number} [opts.retries]
+ * @returns {Promise<object>} parsed response
+ */
+export async function postJson(url, body, opts = {}) {
+  const { headers = {}, cacheMs = 0, timeoutMs = 30000, retries = 2 } = opts;
+  const payload = JSON.stringify(body ?? {});
+  // Never let a credential reach the cache key on disk.
+  const safeHeaders = { ...headers };
+  for (const k of Object.keys(safeHeaders)) {
+    if (/key|auth|token|secret/i.test(k)) safeHeaders[k] = 'x';
+  }
+  const key = cacheKey(`POST ${url}`, `${JSON.stringify(safeHeaders)}::${payload}`);
+
+  const cached = await readCache(key, cacheMs);
+  if (cached !== null) {
+    try { return JSON.parse(cached); } catch { /* fall through and refetch */ }
+  }
+
+  const host = new URL(url).host;
+  let lastErr;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const text = await throttle(host, async () => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            signal: ctrl.signal,
+            headers: {
+              'User-Agent': UA,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              ...headers,
+            },
+            body: payload,
+          });
+          const out = await res.text();
+          if (!res.ok) throw new HttpError(res.status, url, out);
+          return out;
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+
+      if (cacheMs) await writeCache(key, text);
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(`Expected JSON from ${url} but got ${text.slice(0, 120)}`);
+      }
+    } catch (err) {
+      lastErr = err;
+      const status = err instanceof HttpError ? err.status : 0;
+      if (status && status !== 429 && status < 500) break;
+      if (attempt < retries) await sleep(800 * 2 ** attempt + Math.random() * 400);
+    }
+  }
+  throw lastErr;
+}
+
 /** GET returning parsed JSON, or null when the body is not JSON. */
 export async function getJson(url, opts = {}) {
   const body = await get(url, { headers: { Accept: 'application/json' }, ...opts });

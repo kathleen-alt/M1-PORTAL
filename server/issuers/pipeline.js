@@ -16,6 +16,7 @@ import * as nasdaq from './sources/nasdaq.js';
 import * as otc from './sources/otc.js';
 import * as tsxv from './sources/tsxv.js';
 import * as cse from './sources/cse.js';
+import * as apollo from './sources/apollo.js';
 import * as yahoo from './sources/yahoo.js';
 import * as stocktwits from './sources/stocktwits.js';
 import * as site from './sources/site.js';
@@ -253,6 +254,116 @@ export async function scanReleaseArchives({
  * Peer medians come from the full held universe, so scoring after a wider
  * enrichment sweep sharpens every previous record's comparison too.
  */
+/**
+ * Stage 6 — decision-maker contacts from Apollo.
+ *
+ * Release footers answered "who to call" for about a third of the list; the
+ * rest print no name at all. This fills the gap and takes precedence over the
+ * scraped contact, which is kept alongside so the two can be compared.
+ *
+ * Search is free; each revealed email costs one credit. Nothing is revealed for
+ * an issuer that already carries a fresh Apollo contact, so a re-run is cheap.
+ *
+ * @param {object} [opts]
+ * @param {string[]} [opts.keys]          limit to these issuers
+ * @param {number} [opts.limit]
+ * @param {number} [opts.maxPerCompany]   people to buy per issuer (default 2)
+ * @param {boolean} [opts.reveal]         false to search only and spend nothing
+ * @param {number} [opts.maxAgeDays]      treat a contact younger than this as fresh
+ */
+export async function apolloContacts({
+  keys = null,
+  limit = 500,
+  maxPerCompany = 2,
+  reveal = true,
+  maxAgeDays = 90,
+  verbose = false,
+} = {}) {
+  const summary = {
+    configured: apollo.configured(), attempted: 0, searched: 0, candidates: 0,
+    selected: 0, revealed: 0, withEmail: 0, skippedFresh: 0, failed: 0, creditsSpent: 0,
+  };
+  if (!summary.configured) {
+    log(verbose, '· Apollo: APOLLO_API_KEY not set — skipping (set it to enable contact lookup)');
+    return summary;
+  }
+
+  const held = await store.all();
+  const fresh = Date.now() - maxAgeDays * 86400e3;
+  const targets = (keys ? held.filter((i) => keys.includes(i.key)) : held)
+    .filter((i) => i.website)
+    .filter((i) => {
+      if (!i.apolloAt) return true;
+      if (Date.parse(i.apolloAt) >= fresh) { summary.skippedFresh += 1; return false; }
+      return true;
+    })
+    .slice(0, limit);
+
+  summary.attempted = targets.length;
+  log(verbose, `· Apollo: ${targets.length} issuers to look up (${summary.skippedFresh} already fresh)`);
+
+  const domainOf = (url) => {
+    try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return null; }
+  };
+  const byDomain = new Map();
+  for (const it of targets) {
+    const d = domainOf(it.website);
+    if (d && !byDomain.has(d)) byDomain.set(d, it);
+  }
+
+  const domains = [...byDomain.keys()];
+  const updates = [];
+
+  // Apollo takes many domains per search, so batch rather than one call each.
+  for (let i = 0; i < domains.length; i += 25) {
+    const batch = domains.slice(i, i + 25);
+    let people = [];
+    try {
+      people = await apollo.searchPeople(batch);
+      summary.searched += batch.length;
+    } catch (err) {
+      summary.failed += batch.length;
+      log(verbose, `  search failed for ${batch.length} domains — ${err.message.split('\n')[0]}`);
+      continue;
+    }
+    summary.candidates += people.length;
+
+    const chosen = apollo.selectContacts(people, maxPerCompany);
+    for (const [domain, picks] of chosen) {
+      const issuer = byDomain.get(domain);
+      if (!issuer || !picks.length) continue;
+      summary.selected += picks.length;
+
+      let contacts = picks.map((p) => apollo.toContact(p, { role: p._role }));
+
+      if (reveal) {
+        try {
+          const matches = await apollo.revealEmails(picks.slice(0, 10));
+          summary.revealed += matches.length;
+          summary.creditsSpent += matches.filter((m) => m && m.email).length;
+          contacts = picks.map((p, n) => apollo.toContact(p, { role: p._role, revealed: matches[n] }));
+        } catch (err) {
+          log(verbose, `  reveal failed for ${domain} — ${err.message.split('\n')[0]}`);
+        }
+      }
+
+      summary.withEmail += contacts.filter((c) => c.email).length;
+      updates.push({
+        ...issuer,
+        apolloContacts: contacts,
+        apolloPrimary: contacts[0] || null,
+        apolloAt: new Date().toISOString(),
+      });
+    }
+    log(verbose, `  ${Math.min(i + 25, domains.length)}/${domains.length} domains`);
+  }
+
+  await store.upsertMany(updates);
+  await store.logRun({ stage: 'apollo', ...summary });
+  await store.save();
+  return summary;
+}
+
 export async function rescore({ verbose = false } = {}) {
   const held = await store.all();
   const scored = scoreAll(held);
@@ -295,6 +406,14 @@ export async function checkSources() {
     expectRows(await tsxv.fetchUniverse(), (r) => `${r.length} symbols`));
   await probe('cse', cse.meta.label, async () =>
     expectRows(await cse.fetchUniverse(), (r) => `${r.length} symbols`));
+  // Apollo is the one source that needs a credential, so an absent key is
+  // reported as not-configured rather than as a failure: the sweep is designed
+  // to run without it.
+  await probe('apollo', apollo.meta.label, async () => {
+    if (!apollo.configured()) throw new Error('APOLLO_API_KEY not set — contact lookup disabled (every other source is keyless)');
+    const people = await apollo.searchPeople(['apollo.io'], { perPage: 1, cacheMs: 0 });
+    return `authenticated; search returned ${people.length} record(s)`;
+  });
   await probe('yahoo', yahoo.meta.label, async () => {
     const q = await yahoo.fetchQuoteSummary('AAPL', { cacheMs: 0 });
     if (!q?.price) throw new Error('no price returned for AAPL');

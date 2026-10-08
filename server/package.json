@@ -16,7 +16,8 @@
     "issuers:stats": "node cli/issuers.js stats",
     "issuers:export": "node cli/issuers.js export",
     "issuers:releases": "node cli/issuers.js releases",
-    "issuers:qualify": "node cli/issuers.js qualify"
+    "issuers:qualify": "node cli/issuers.js qualify",
+    "issuers:contacts": "node cli/issuers.js contacts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.69.0",
