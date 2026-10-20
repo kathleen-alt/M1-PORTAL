@@ -269,9 +269,15 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 /* ── Issuer intelligence ─────────────────────────────────── */
 .issuers .head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .iss-layout { display: grid; grid-template-columns: 268px 1fr; gap: 18px; align-items: start; }
+/* Collapsing the rail gives the table the whole row, which is what lets every
+   column fit without sideways scrolling on a laptop screen. */
+.iss-layout.rail-closed { grid-template-columns: 1fr; }
 @media (max-width: 1040px) { .iss-layout { grid-template-columns: 1fr; } }
 
 .iss-rail { position: sticky; top: 18px; display: flex; flex-direction: column; gap: 14px; }
+/* display:flex above beats the hidden attribute's own display:none, so the
+   collapsed rail has to be hidden explicitly or it just goes full width. */
+.iss-rail[hidden] { display: none; }
 .iss-rail-head { display: flex; align-items: center; justify-content: space-between; }
 .iss-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-2); }
 .iss-group { display: flex; flex-direction: column; gap: 7px; }
@@ -297,22 +303,23 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 }
 
 .iss-table-wrap { overflow-x: auto; }
-/* The contact and package columns push the grid past the panel; a min-width
-   lets .iss-table-wrap scroll instead of clipping the right-hand columns. */
-.iss-table { width: 100%; min-width: 1240px; border-collapse: collapse; font-size: 13px; }
+/* Eleven columns fit the panel without sideways scrolling, so the contact is
+   always on screen. Sector moved under the company name and releases moved to
+   the detail panel to buy the room. */
+.iss-table { width: 100%; min-width: 980px; border-collapse: collapse; font-size: 13px; }
 .iss-table th {
-  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--muted-2); font-weight: 600; padding: 11px 10px; border-bottom: 1px solid var(--line);
+  text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted-2); font-weight: 600; padding: 10px 7px; border-bottom: 1px solid var(--line);
   position: sticky; top: 0; background: var(--panel); white-space: nowrap;
 }
-.iss-table td { padding: 10px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; white-space: nowrap; }
+.iss-table td { padding: 9px 7px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; white-space: nowrap; }
 .iss-table td.wrap { white-space: normal; }
 .iss-table tbody tr { cursor: pointer; }
 .iss-table tbody tr:hover { background: var(--panel-2); }
 .iss-table tbody tr.sel { background: var(--accent-soft); }
 .iss-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .iss-table .bad { color: var(--bad); }
-.iss-table .iss-name { max-width: 210px; overflow: hidden; text-overflow: ellipsis; }
+.iss-table .iss-name { max-width: 164px; overflow: hidden; text-overflow: ellipsis; }
 .iss-table .iss-sector { max-width: 120px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--text-dim); }
 .iss-ex { font-size: 10.5px; color: var(--muted-2); margin-top: 2px; }
 
@@ -443,9 +450,18 @@ label.fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; co
 .iss-pkg.full-package { background: var(--accent-soft, rgba(190,150,60,.16)); color: var(--accent, #8a5f16); }
 .iss-pkg.supplement   { background: rgba(127,127,127,.14); color: inherit; opacity: .85; }
 
-.iss-contact { max-width: 11.5rem; overflow: hidden; }
-.iss-contact strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.iss-contact .iss-ex { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iss-contact { max-width: 12.5rem; overflow: hidden; }
+.iss-contact strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.iss-reach { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 11px; }
+.iss-reach a { color: var(--accent); text-decoration: none; white-space: nowrap; }
+.iss-reach a:hover { text-decoration: underline; }
+.iss-role {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700;
+  padding: 1px 5px; border-radius: 3px; background: var(--panel-2); color: var(--muted-2); white-space: nowrap;
+}
+/* The investor-relations lead is the contact worth having; make it findable. */
+.iss-role.investor-relations { background: rgba(60,160,110,.18); color: #4fae83; }
+.iss-role.corporate-communications { background: rgba(70,130,200,.18); color: #6ba3e0; }
 .iss-contact strong { font-weight: 600; }
 .iss-raise { font-variant-numeric: tabular-nums; font-size: .78rem; }
 .iss-caveat { font-size: .74rem; font-style: italic; opacity: .8; margin-top: 2px; }

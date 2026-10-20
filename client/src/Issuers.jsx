@@ -38,6 +38,14 @@ const ROLE_SHORT = {
   'chief executive': 'CEO',
 };
 
+// Exchange directories append the instrument to the issuer name. The table is
+// read by people scanning for a company, so strip the boilerplate for display.
+const cleanName = (n) => String(n || '')
+  .replace(/\s*[-,]?\s*(Class\s+[A-Z]\s+)?(Common\s+(Stock|Shares)|Ordinary\s+Shares?|Subordinate\s+Voting\s+Shares?|Shares? of Beneficial Interest)\b.*$/i, '')
+  .replace(/\s*\((?:Nasdaq|NYSE|TSXV?|CSE)[^)]*\)\s*$/i, '')
+  .replace(/\s+(Inc|Corp|Corporation|Ltd|Limited|PLC)\.?$/i, (m) => m)
+  .trim();
+
 const CAP_RANGES = [
   { id: '', label: 'Any size', min: '', max: '' },
   { id: 'nano', label: 'Under $50M', min: '', max: '50000000' },
@@ -116,6 +124,9 @@ export default function Issuers({ onToast }) {
   const [closedRaise, setClosedRaise] = useState(false);
   const [noSocial, setNoSocial] = useState(false);
   const [includeClients, setIncludeClients] = useState(false);
+  // The table needs the full width to show every column without sideways
+  // scrolling; collapsing the rail is what buys it.
+  const [railOpen, setRailOpen] = useState(true);
 
   const pageSize = 50;
   const debounce = useRef(null);
@@ -270,8 +281,8 @@ export default function Issuers({ onToast }) {
         </div>
       )}
 
-      <div className="iss-layout">
-        <aside className="iss-rail panel pad">
+      <div className={`iss-layout ${railOpen ? "" : "rail-closed"}`}>
+        <aside className="iss-rail panel pad" hidden={!railOpen}>
           <div className="iss-rail-head">
             <strong>Filters</strong>
             <button className="btn ghost sm" onClick={reset}>Reset</button>
@@ -446,6 +457,10 @@ export default function Issuers({ onToast }) {
 
         <div className="iss-main">
           <div className="iss-toolbar">
+            <button className="btn sm" onClick={() => setRailOpen(!railOpen)}
+              title={railOpen ? 'Hide filters and widen the table' : 'Show filters'}>
+              {railOpen ? '‹ Filters' : 'Filters ›'}
+            </button>
             <span className="muted">
               {loading ? 'Loading…' : `${int(total)} match${total === 1 ? '' : 'es'}`}
               {total > pageSize && ` · page ${page} of ${Math.ceil(total / pageSize)}`}
@@ -463,11 +478,11 @@ export default function Issuers({ onToast }) {
             <table className="iss-table">
               <thead>
                 <tr>
-                  <th>Fit</th><th>Symbol</th><th>Company</th><th>Sector</th>
+                  <th>Fit</th><th>Symbol</th><th>Company</th>
+                  <th>Who to call</th><th>Package</th>
                   <th className="num">Mkt cap</th><th className="num">$ Vol/day</th>
                   <th className="num">Drawdown</th><th className="num">Watchers</th>
-                  <th>Package</th><th>Who to call</th><th className="num">Raise</th>
-                  <th className="num">Releases</th><th>IR posture</th>
+                  <th className="num">Raise</th><th>IR posture</th>
                 </tr>
               </thead>
               <tbody>
@@ -482,13 +497,30 @@ export default function Issuers({ onToast }) {
                       )}
                       <div className="iss-ex">{r.exchange}</div>
                     </td>
-                    <td className="iss-name">{r.name}</td>
-                    <td className="iss-sector" title={r.sectorLabel || ''}>{r.sectorLabel || '—'}</td>
-                    <td className="num">{usd(r.marketCap)}</td>
-                    <td className="num">{usd(r.avgDollarVolume3m)}</td>
-                    <td className={`num ${r.drawdownPct != null && r.drawdownPct <= -0.6 ? 'bad' : ''}`}>{pct(r.drawdownPct)}</td>
-                    <td className="num" title={r.dollarPerWatcher != null ? `$${r.dollarPerWatcher.toFixed(1)} traded per watcher` : ''}>
-                      {r.watchers != null ? r.watchers.toLocaleString() : <span className="muted">—</span>}
+                    <td className="iss-name">
+                      <span title={r.name}>{cleanName(r.name)}</span>
+                      <div className="iss-ex">{r.sectorLabel || '—'}</div>
+                    </td>
+                    <td className="iss-contact" onClick={(e) => e.stopPropagation()}>
+                      {r.contactName || r.contactEmail || r.contactPhone
+                        ? <>
+                            <strong title={r.contactTitle || ''}>
+                              {r.contactName || '—'}
+                              {r.contactCaveat && <span className="iss-flag" title={r.contactCaveat}>check</span>}
+                            </strong>
+                            <div className="iss-reach">
+                              <span className={`iss-role ${(r.contactRole || '').replace(/\s+/g, '-')}`}>
+                                {ROLE_SHORT[r.contactRole] || r.contactRole || '—'}
+                              </span>
+                              {r.contactEmail && <a href={`mailto:${r.contactEmail}`} title={r.contactEmail}>email</a>}
+                              {r.contactPhone && <a href={`tel:${r.contactPhone}`} title={r.contactPhone}>{r.contactPhone}</a>}
+                              {!r.contactEmail && !r.contactPhone && r.contactLinkedin
+                                && <a href={r.contactLinkedin} target="_blank" rel="noopener">LinkedIn</a>}
+                            </div>
+                          </>
+                        : r.reachable === false
+                          ? <span className="iss-tag warn" title="Searched Apollo: nobody in investor relations, communications or the chief executive seat">no route in</span>
+                          : <span className="muted">not looked up</span>}
                     </td>
                     <td>
                       {r.serviceTier
@@ -497,27 +529,14 @@ export default function Issuers({ onToast }) {
                           </span>
                         : <span className="muted">—</span>}
                     </td>
-                    <td className="iss-contact">
-                      {r.contactName
-                        ? <>
-                            <strong>{r.contactName}</strong>
-                            {r.contactCaveat && <span className="iss-flag" title={r.contactCaveat}>check</span>}
-                            <div className="iss-ex" title={r.contactTitle || ''}>
-                              {ROLE_SHORT[r.contactRole] || r.contactRole || ''}
-                              {r.contactEmail ? ' · email' : r.contactPhone ? ' · phone' : r.contactLinkedin ? ' · LinkedIn' : ''}
-                            </div>
-                          </>
-                        : r.reachable === false
-                          ? <span className="iss-tag warn" title="Searched: nobody in investor relations, communications or the chief executive seat">no route in</span>
-                          : <span className="muted">not looked up</span>}
+                    <td className="num">{usd(r.marketCap)}</td>
+                    <td className="num">{usd(r.avgDollarVolume3m)}</td>
+                    <td className={`num ${r.drawdownPct != null && r.drawdownPct <= -0.6 ? 'bad' : ''}`}>{pct(r.drawdownPct)}</td>
+                    <td className="num" title={r.dollarPerWatcher != null ? `$${r.dollarPerWatcher.toFixed(1)} traded per watcher` : ''}>
+                      {r.watchers != null ? r.watchers.toLocaleString() : <span className="muted">—</span>}
                     </td>
                     <td className="num" title={r.closedRaiseText || ''}>
                       {r.closedRaiseDate ? <span className="iss-raise">{r.closedRaiseDate}</span> : <span className="muted">—</span>}
-                    </td>
-                    <td className="num" title={r.latestRelease ? `Latest ${r.latestRelease}` : ''}>
-                      {r.releaseCount
-                        ? <>{r.releasesLast12m ?? r.releaseCount}{r.newsReaction?.flatShare >= 0.6 && <span className="iss-flat" title="Announcements move neither price nor volume">·flat</span>}</>
-                        : '—'}
                     </td>
                     <td>
                       {r.irPosture === 'agency-retained'
@@ -528,7 +547,7 @@ export default function Issuers({ onToast }) {
                   </tr>
                 ))}
                 {!rows.length && (
-                  <tr><td colSpan={13} className="empty">
+                  <tr><td colSpan={11} className="empty">
                     {loading || !loaded ? 'Loading…' : 'No issuers match these filters.'}
                   </td></tr>
                 )}
