@@ -23,7 +23,24 @@ const EXCHANGE_CODE = {
 function parsePipe(text) {
   const lines = text.split('\n').map((l) => l.replace(/\r$/, '')).filter(Boolean);
   if (!lines.length) return [];
+
+  // Nasdaq Trader sits behind a bot-protection gateway that answers with a
+  // JavaScript challenge page rather than a 4xx. Split on "|", that HTML parses
+  // as a handful of nameless single-column rows, so the sweep reported a
+  // healthy source and quietly ingested junk. A symbol file always has a
+  // pipe-delimited header; anything else is the gateway, and saying so sends
+  // the reader to the documented local override instead of a phantom outage.
   const header = lines[0].split('|').map((h) => h.trim());
+  if (header.length < 2) {
+    const looksLikeHtml = /^\s*<(?:!doctype|html|head|script|meta)\b/i.test(text);
+    throw new Error(
+      looksLikeHtml
+        ? 'Nasdaq Trader returned a bot-protection page instead of the symbol file '
+          + '(Incapsula/Imperva challenge). Download nasdaqlisted.txt in a browser and drop it at '
+          + 'server/data/universe/nasdaqlisted.txt, then re-run.'
+        : `Nasdaq Trader returned ${lines.length} line(s) with no pipe-delimited header`,
+    );
+  }
   return lines
     .slice(1)
     .filter((l) => !l.startsWith('File Creation Time'))
