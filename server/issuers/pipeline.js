@@ -39,7 +39,7 @@ export const DEFAULT_VENUES = ['NASDAQ', 'OTC', 'TSXV', 'CSE'];
 const log = (on, ...args) => { if (on) console.log(...args); };
 
 /** Run `worker` over `items` with bounded concurrency, reporting progress. */
-async function pool(items, limit, worker, onProgress) {
+async function pool(items, limit, worker, onProgress, onEach) {
   const results = [];
   let index = 0;
   let done = 0;
@@ -54,7 +54,10 @@ async function pool(items, limit, worker, onProgress) {
         results[i] = { error: err.message };
       }
       done += 1;
+      // onProgress stays throttled for logging; onEach sees every record so a
+      // caller can checkpoint without re-deriving which ones finished.
       if (onProgress && done % 25 === 0) onProgress(done, items.length);
+      if (onEach) await onEach(results[i], done, items.length);
     }
   });
 
@@ -104,6 +107,23 @@ export async function enrich({ keys = null, limit = 500, concurrency = 4, verbos
   log(verbose, `· enriching ${targets.length} issuers…`);
   const summary = { attempted: targets.length, enriched: 0, awareness: 0, missing: 0, failed: 0 };
 
+  // Pricing a full board is an hour of paced requests, and until this returned
+  // every record of it lived only in memory: a container recycled mid-run threw
+  // the lot away. Fold finished records into the store periodically so an
+  // interrupted sweep resumes from the last checkpoint instead of from nothing.
+  const CHECKPOINT_EVERY = Number(process.env.ISSUERS_CHECKPOINT_EVERY || 250);
+  const pending = [];
+  let checkpointed = 0;
+  const flush = async (force = false) => {
+    if (!pending.length) return;
+    if (!force && pending.length < CHECKPOINT_EVERY) return;
+    const batch = pending.splice(0, pending.length);
+    await store.upsertMany(batch);
+    await store.save();
+    checkpointed += batch.length;
+    log(verbose, `  · checkpointed ${checkpointed}/${targets.length}`);
+  };
+
   const out = await pool(
     targets,
     concurrency,
@@ -134,10 +154,17 @@ export async function enrich({ keys = null, limit = 500, concurrency = 4, verbos
       return rec;
     },
     (done, total) => log(verbose, `  ${done}/${total}`),
+    async (rec) => {
+      if (rec && rec.key) pending.push(rec);
+      await flush();
+    },
   );
 
+  await flush(true);
+  // `out` is re-applied in full: a checkpointed record is simply written twice,
+  // and this keeps the result correct even if the progress hook never fired.
   await store.upsertMany(out.filter((r) => r && r.key));
-  await store.logRun({ stage: 'enrich', ...summary });
+  await store.logRun({ stage: 'enrich', ...summary, checkpointed });
   await store.save();
   return summary;
 }
