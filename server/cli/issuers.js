@@ -38,6 +38,9 @@ Issuer intelligence pipeline
   releases    Read full press-release archives      --limit 50 --max-releases 120 --min-score 55
   contacts    Decision-maker contacts from Apollo   --limit 500 --per-company 1
               --no-reveal to search without spending credits
+  campaign    One row per contact, for a mail-merge   --out campaign.csv --min-score 55
+              --verified-only  drop unverified addresses
+              --no-catchall    drop catch-all domains
   score       Re-score every held issuer
   qualify     Two-pass sweep: score the universe on market data, then read the
               websites and full release archives of everything that qualified,
@@ -104,6 +107,24 @@ async function main() {
         maxAgeDays: numFlag('max-age-days', 90),
         verbose: true,
       }));
+      break;
+    }
+    case 'campaign': {
+      const { toCampaignRows, toCampaignCsv } = await import('../issuers/campaign.js');
+      const clients = await import('../issuers/clients.js');
+      const all = await clients.tag(await store.all());
+      const min = numFlag('min-score', 0);
+      const rows = toCampaignRows(
+        all.filter((i) => (i.fit?.score ?? -1) >= min),
+        { verifiedOnly: flag('verified-only') === true, excludeCatchall: flag('no-catchall') === true },
+      );
+      const out = String(flag('out', 'campaign.csv'));
+      const { writeFile } = await import('node:fs/promises');
+      await writeFile(out, toCampaignCsv(rows));
+      const companies = new Set(rows.map((r) => r.symbol)).size;
+      console.log(`Wrote ${rows.length} contacts at ${companies} companies to ${out}`);
+      const risky = rows.filter((r) => r.emailRisk).length;
+      if (risky) console.log(`  ${risky} are on catch-all domains — verify before sending`);
       break;
     }
     case 'score':

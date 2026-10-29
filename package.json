@@ -19,7 +19,8 @@
     "issuers:check": "npm --workspace server run issuers:check",
     "issuers:stats": "npm --workspace server run issuers:stats",
     "issuers:qualify": "npm --workspace server run issuers:qualify --",
-    "issuers:contacts": "npm --workspace server run issuers:contacts --"
+    "issuers:contacts": "npm --workspace server run issuers:contacts --",
+    "issuers:campaign": "npm --workspace server run issuers:campaign --"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
