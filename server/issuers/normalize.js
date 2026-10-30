@@ -263,6 +263,9 @@ export const EXPORT_COLUMNS = [
   ['socialYoutubeSubs', 'YouTube Subs'],
   ['socialStocktwits30d', 'StockTwits msgs (30d)'],
   ['socialOutlets', 'Outlets / Newswire'],
+  ['pitchedLast', 'Last Proposal'],
+  ['pitchedCount', 'Proposals On File'],
+  ['pitchedOutcome', 'Proposal Outcome'],
   ['fitScore', 'Fit Score'],
   ['fitTier', 'Tier'],
   ['fitReasons', 'Why this company is a good fit for Market One'],
@@ -327,6 +330,19 @@ export function toRow(it) {
     socialNone: it.social?.scannedAt
       ? !(it.social.linkedin || it.social.x || it.social.youtube)
       : null,
+
+    // What Market One has already sent this company. A contract on file means
+    // they signed at some point, so this is a re-approach rather than a cold
+    // one; a proposal with no contract behind it means they were pitched and
+    // said no, which is worth knowing before writing the first line.
+    pitchedLast: it.proposalHistory?.lastDate ?? null,
+    pitchedCount: it.proposalHistory?.count ?? null,
+    pitchedOutcome: it.proposalHistory
+      ? (it.proposalHistory.type === 'contract' ? 'signed at least once'
+        : it.proposalHistory.type === 'renewal' ? 'renewed at least once'
+        : 'proposal only — never signed')
+      : null,
+    pitchedAs: it.proposalHistory?.company ?? null,
   };
 }
 

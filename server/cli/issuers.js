@@ -39,6 +39,7 @@ Issuer intelligence pipeline
   contacts    Decision-maker contacts from Apollo   --limit 500 --per-company 1
               --no-reveal to search without spending credits
   campaign    One row per contact, for a mail-merge   --out campaign.csv --min-score 55
+  proposals   What we have already pitched, and when      --limit 40
               --verified-only  drop unverified addresses
               --no-catchall    drop catch-all domains
   score       Re-score every held issuer
@@ -109,10 +110,34 @@ async function main() {
       }));
       break;
     }
+    case 'proposals': {
+      const proposals = await import('../issuers/proposals.js');
+      const clients = await import('../issuers/clients.js');
+      const idx = await proposals.load();
+      const all = await proposals.tag(await clients.tag(await store.all()));
+      const hits = all.filter((i) => i.proposalHistory)
+        .sort((a, b) => String(b.proposalHistory.lastDate || '').localeCompare(String(a.proposalHistory.lastDate || '')));
+      console.log(`${idx.rows.length} documents / ${idx.byName.size} companies indexed from ${idx.loadedFrom || '(no file)'}`);
+      console.log(`${hits.length} of ${all.length} held issuers have a proposal on file (${hits.filter((i) => i.isClient).length} are current clients)`);
+      const limit = numFlag('limit', 40);
+      for (const it of hits.slice(0, limit)) {
+        const h = it.proposalHistory;
+        console.log([
+          String(h.lastDate || '????-??-??'),
+          h.type.padEnd(8),
+          `${it.exchange}:${it.symbol}`.padEnd(12),
+          it.isClient ? 'CLIENT' : '      ',
+          `${h.count}x`.padEnd(4),
+          it.name,
+        ].join('  '));
+      }
+      break;
+    }
     case 'campaign': {
       const { toCampaignRows, toCampaignCsv } = await import('../issuers/campaign.js');
       const clients = await import('../issuers/clients.js');
-      const all = await clients.tag(await store.all());
+      const proposals = await import('../issuers/proposals.js');
+      const all = await proposals.tag(await clients.tag(await store.all()));
       const min = numFlag('min-score', 0);
       const rows = toCampaignRows(
         all.filter((i) => (i.fit?.score ?? -1) >= min),
@@ -125,6 +150,8 @@ async function main() {
       console.log(`Wrote ${rows.length} contacts at ${companies} companies to ${out}`);
       const risky = rows.filter((r) => r.emailRisk).length;
       if (risky) console.log(`  ${risky} are on catch-all domains — verify before sending`);
+      const warm = rows.filter((r) => r.lastProposal).length;
+      if (warm) console.log(`  ${warm} are at companies we have already sent paper to — see Last Proposal`);
       break;
     }
     case 'score':

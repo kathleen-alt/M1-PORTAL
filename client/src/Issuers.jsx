@@ -20,6 +20,7 @@ const SORTS = [
   { id: 'lastRelease', label: 'Most recent release' },
   { id: 'contact', label: 'Best contact first' },
   { id: 'closedRaise', label: 'Most recent raise' },
+  { id: 'lastPitched', label: 'Coldest first (never pitched)' },
   { id: 'package', label: 'Package fit' },
   { id: 'symbol', label: 'Symbol A-Z' },
 ];
@@ -32,6 +33,14 @@ const VOLUME_CAPS = [
 ];
 
 // Short labels for the three roles worth calling.
+// "Pitched a while ago" means more than eighteen months, which is long enough
+// that the deck, the price and usually the IR contact have all changed.
+function staleBefore() {
+  const d = new Date();
+  d.setUTCMonth(d.getUTCMonth() - 18);
+  return d.toISOString().slice(0, 10);
+}
+
 const ROLE_SHORT = {
   'investor relations': 'IR lead',
   'corporate communications': 'Comms',
@@ -123,6 +132,7 @@ export default function Issuers({ onToast }) {
   const [hasEmail, setHasEmail] = useState(false);
   const [closedRaise, setClosedRaise] = useState(false);
   const [noSocial, setNoSocial] = useState(false);
+  const [pitchHistory, setPitchHistory] = useState('');   // '' | 'never' | 'pitched' | 'stale'
   const [includeClients, setIncludeClients] = useState(false);
   // The table needs the full width to show every column without sideways
   // scrolling; collapsing the rail is what buys it.
@@ -157,11 +167,14 @@ export default function Issuers({ onToast }) {
     if (hasEmail) p.hasEmail = '1';
     if (closedRaise) p.closedRaise = '1';
     if (noSocial) p.noSocial = '1';
+    if (pitchHistory === 'never') p.neverPitched = '1';
+    else if (pitchHistory === 'pitched') p.pitched = '1';
+    else if (pitchHistory === 'stale') p.pitchedBefore = staleBefore();
     if (includeClients) p.includeClients = '1';
     return p;
   }, [q, exchange, sector, tier, sort, maxVolume, capRange, minDrawdown, minScore, minWatchers,
       noAgency, hasContact, verified, hasQuote, recentRaise, noReaction, includeIneligible,
-      pkg, contactRole, reachable, hasEmail, closedRaise, noSocial, includeClients, page]);
+      pkg, contactRole, reachable, hasEmail, closedRaise, noSocial, pitchHistory, includeClients, page]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -191,7 +204,7 @@ export default function Issuers({ onToast }) {
 
   useEffect(() => { setPage(1); }, [q, exchange, sector, tier, maxVolume, capRange, minDrawdown, minScore,
     minWatchers, noAgency, hasContact, verified, hasQuote, recentRaise, noReaction, includeIneligible,
-    pkg, contactRole, reachable, hasEmail, closedRaise, noSocial, includeClients]);
+    pkg, contactRole, reachable, hasEmail, closedRaise, noSocial, pitchHistory, includeClients]);
 
   const loadFacets = useCallback(async () => {
     try {
@@ -213,6 +226,7 @@ export default function Issuers({ onToast }) {
     setClosedRaise(false); setNoSocial(false); setIncludeClients(false);
     setQ(''); setExchange([]); setSector([]); setTier([]); setMaxVolume(''); setCapRange('');
     setMinDrawdown(''); setMinScore(''); setMinWatchers(''); setNoAgency(false); setHasContact(false); setVerified(false);
+    setPitchHistory('');
     setHasQuote(false); setRecentRaise(false); setNoReaction(false); setIncludeIneligible(false);
   };
 
@@ -424,6 +438,16 @@ export default function Issuers({ onToast }) {
           </div>
 
           <div className="iss-group">
+            <span className="iss-label">Proposal history</span>
+            <select value={pitchHistory} onChange={(e) => setPitchHistory(e.target.value)}>
+              <option value="">Any — pitched or not</option>
+              <option value="never">Never pitched</option>
+              <option value="pitched">Already pitched</option>
+              <option value="stale">Pitched, but over 18 months ago</option>
+            </select>
+          </div>
+
+          <div className="iss-group">
             <span className="iss-label">From press releases</span>
             <label className="iss-check">
               <input type="checkbox" checked={hasQuote} onChange={(e) => setHasQuote(e.target.checked)} />
@@ -482,7 +506,7 @@ export default function Issuers({ onToast }) {
                   <th>Who to call</th><th>Package</th>
                   <th className="num">Mkt cap</th><th className="num">$ Vol/day</th>
                   <th className="num">Drawdown</th><th className="num">Watchers</th>
-                  <th className="num">Raise</th><th>IR posture</th>
+                  <th className="num">Raise</th><th className="num">Pitched</th><th>IR posture</th>
                 </tr>
               </thead>
               <tbody>
@@ -538,6 +562,15 @@ export default function Issuers({ onToast }) {
                     <td className="num" title={r.closedRaiseText || ''}>
                       {r.closedRaiseDate ? <span className="iss-raise">{r.closedRaiseDate}</span> : <span className="muted">—</span>}
                     </td>
+                    <td className="num" title={r.pitchedLast
+                      ? `${r.pitchedCount} document${r.pitchedCount === 1 ? '' : 's'} on file — ${r.pitchedOutcome}${r.pitchedAs && r.pitchedAs !== r.name ? ` (filed as "${r.pitchedAs}")` : ''}`
+                      : 'no proposal on file'}>
+                      {r.pitchedLast
+                        ? <span className={`iss-pitched ${r.pitchedOutcome?.startsWith('signed') || r.pitchedOutcome?.startsWith('renewed') ? 'signed' : ''}`}>
+                            {r.pitchedLast.slice(0, 7)}
+                          </span>
+                        : <span className="muted">never</span>}
+                    </td>
                     <td>
                       {r.irPosture === 'agency-retained'
                         ? <span className="iss-tag warn" title={r.incumbentAgency || ''}>{r.incumbentAgency || 'Agency'}</span>
@@ -547,7 +580,7 @@ export default function Issuers({ onToast }) {
                   </tr>
                 ))}
                 {!rows.length && (
-                  <tr><td colSpan={11} className="empty">
+                  <tr><td colSpan={12} className="empty">
                     {loading || !loaded ? 'Loading…' : 'No issuers match these filters.'}
                   </td></tr>
                 )}
@@ -759,6 +792,27 @@ function IssuerDrawer({ issuer, model, onClose, onToast }) {
                 </dd>
               </>
             )}
+            <dt>Proposal history</dt>
+            <dd>
+              {full.proposalHistory
+                ? <>
+                    <strong>{full.proposalHistory.lastDate}</strong>
+                    <span className="muted"> · {full.proposalHistory.count} on file · {full.pitchedOutcome}</span>
+                    {full.proposalHistory.company !== full.name && (
+                      <div className="muted">filed as “{full.proposalHistory.company}”</div>
+                    )}
+                    <ul className="iss-docs">
+                      {full.proposalHistory.docs.map((d) => (
+                        <li key={d.file}>
+                          <span className="iss-docdate">{d.date || '????-??-??'}</span>
+                          <span className={`iss-tag ${d.type === 'contract' ? 'good' : ''}`}>{d.type}</span>
+                          <span className="muted"> {d.file}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                : <span className="muted">Never pitched — nothing on file</span>}
+            </dd>
             <dt>Owned audience</dt>
             <dd>
               {[full.socialLinkedinFollowers != null && `LinkedIn ${full.socialLinkedinFollowers.toLocaleString()}`,

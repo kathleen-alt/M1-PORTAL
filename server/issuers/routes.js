@@ -15,6 +15,7 @@ import * as pipeline from './pipeline.js';
 import { toCsv, toRow } from './normalize.js';
 import { TEST_META, CAP_BANDS, MIN_COVERAGE, ELIGIBILITY, serviceTier, hasReachableContact, SERVICE } from './score.js';
 import * as clients from './clients.js';
+import * as proposals from './proposals.js';
 
 export const router = express.Router();
 
@@ -44,6 +45,9 @@ const SORTS = {
   // phone-only record, which beats nothing.
   contact: (a, b) => contactRank(b) - contactRank(a),
   closedRaise: (a, b) => String(latestClosed(b) || '').localeCompare(String(latestClosed(a) || '')),
+  // Coldest first: a name we have never pitched, then the one we pitched
+  // longest ago. That is the order a prospector wants to work the list in.
+  lastPitched: (a, b) => String(a.proposalHistory?.lastDate || '').localeCompare(String(b.proposalHistory?.lastDate || '')),
 };
 
 const latestClosed = (it) => (it.closedFinancings || [])
@@ -60,6 +64,14 @@ function contactRank(it) {
   if (c.role === 'investor relations') n += 2;
   else if (c.role === 'corporate communications') n += 1;
   return n;
+}
+
+/**
+ * The held universe with everything Market One already knows about it: who is
+ * on retainer, and who has already had a proposal out and when.
+ */
+async function tagged() {
+  return proposals.tag(await clients.tag(await store.all()));
 }
 
 /** Apply every filter in the query string to the held universe. */
@@ -98,6 +110,12 @@ function applyFilters(issuers, q) {
   const hasEmailOnly = q.hasEmail === '1' || q.hasEmail === 'true';
   // Clients are hidden by default: the mandate is already taken.
   const includeClients = q.includeClients === '1' || q.includeClients === 'true';
+  // Proposal history. `pitched` keeps only names we have been to before,
+  // `neverPitched` only the ones we have not, and `pitchedBefore` keeps the
+  // ones whose last proposal is old enough to be worth another run at.
+  const pitched = q.pitched === '1' || q.pitched === 'true';
+  const neverPitched = q.neverPitched === '1' || q.neverPitched === 'true';
+  const pitchedBefore = (q.pitchedBefore || '').trim() || null;
 
   return issuers.filter((it) => {
     if (exchanges && !exchanges.includes(it.exchange)) return false;
@@ -124,6 +142,9 @@ function applyFilters(issuers, q) {
     if (hasContact && !(it.irEmail || it.linkedin)) return false;
 
     if (!includeClients && it.isClient) return false;
+    if (pitched && !it.proposalHistory) return false;
+    if (neverPitched && it.proposalHistory) return false;
+    if (pitchedBefore && !(it.proposalHistory?.lastDate && it.proposalHistory.lastDate < pitchedBefore)) return false;
     if (packages && !packages.includes(serviceTier(it).tier)) return false;
     if (reachableOnly && !(it.apolloAt && hasReachableContact(it))) return false;
     if (roles) {
@@ -149,7 +170,7 @@ function applyFilters(issuers, q) {
 
 router.get('/issuers', async (req, res) => {
   try {
-    const all = await clients.tag(await store.all());
+    const all = await tagged();
     const filtered = applyFilters(all, req.query);
     const sort = SORTS[req.query.sort] || SORTS.score;
     filtered.sort(sort);
@@ -172,8 +193,9 @@ router.get('/issuers', async (req, res) => {
 
 router.get('/issuers/facets', async (_req, res) => {
   try {
-    const all = await clients.tag(await store.all());
+    const all = await tagged();
     const roster = await clients.load();
+    const proposalIndex = await proposals.load();
     const count = (key) => {
       const out = {};
       for (const it of all) {
@@ -224,6 +246,16 @@ router.get('/issuers/facets', async (_req, res) => {
         matched: all.filter((i) => i.isClient).length,
         file: roster.loadedFrom,
       },
+      proposals: {
+        indexed: proposalIndex.rows.length,
+        companies: proposalIndex.byName.size,
+        matched: all.filter((i) => i.proposalHistory).length,
+        // Pitched and lost, as opposed to pitched and signed: the re-approach
+        // list. Clients are excluded because the mandate is already ours.
+        lapsed: all.filter((i) => i.proposalHistory && !i.isClient).length,
+        everContracted: all.filter((i) => i.proposalHistory?.type === 'contract' && !i.isClient).length,
+        file: proposalIndex.loadedFrom,
+      },
       raises: {
         withClosed: all.filter((i) => (i.closedFinancings || []).length).length,
       },
@@ -241,7 +273,7 @@ router.get('/issuers/facets', async (_req, res) => {
 
 router.get('/issuers/export.csv', async (req, res) => {
   try {
-    const all = await clients.tag(await store.all());
+    const all = await tagged();
     const rows = applyFilters(all, req.query).sort(SORTS[req.query.sort] || SORTS.score);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="market-one-prospects-${new Date().toISOString().slice(0, 10)}.csv"`);

@@ -70,6 +70,11 @@ export function hooks(it) {
     out.push('no LinkedIn, X or YouTube presence found');
   }
   if (it.undervaluedQuote?.quote) out.push('management has called the company undervalued in its own release');
+  if (it.proposalHistory?.lastDate) {
+    out.push(it.proposalHistory.type === 'contract'
+      ? `worked with Market One before — last paperwork ${it.proposalHistory.lastDate}`
+      : `we last sent them a proposal on ${it.proposalHistory.lastDate}`);
+  }
   return out;
 }
 
@@ -98,6 +103,8 @@ export const CAMPAIGN_COLUMNS = [
   ['emailStatus', 'Email Status'],
   ['emailRisk', 'Email Risk'],
   ['contactSource', 'Contact Source'],
+  ['lastProposal', 'Last Proposal'],
+  ['proposalOutcome', 'Proposal Outcome'],
 ];
 
 /**
@@ -149,6 +156,15 @@ export function toCampaignRows(issuers, { verifiedOnly = false, excludeCatchall 
         // is how a domain's reputation gets burned.
         emailRisk: c.catchall ? 'catch-all domain — verify before sending' : '',
         contactSource: c.source || 'apollo',
+        // Blank means genuinely cold. Anything here means somebody at Market
+        // One has sent this company paper before, and the opening line has to
+        // acknowledge it rather than introduce the firm from scratch.
+        lastProposal: it.proposalHistory?.lastDate || '',
+        proposalOutcome: it.proposalHistory
+          ? (it.proposalHistory.type === 'contract' ? 'signed before'
+            : it.proposalHistory.type === 'renewal' ? 'renewed before'
+            : 'pitched, not signed')
+          : '',
       });
     }
   }
