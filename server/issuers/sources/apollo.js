@@ -38,7 +38,12 @@ const TITLE_QUERY = [
 // the CEO" must not be ranked as the chief executive.
 // `assist` rather than `assistant` so the German "Chefassistent des CEO" -- a
 // real result -- is caught alongside the English spellings.
-const PROXY = /(chief of staff|office of the|assist|\bdeputy\b|chef de cabinet|\badvisor\b|\badvisory\b|\bsecretary\b)/i;
+// Spelt in whatever language the profile was written in: "Chefassistent des
+// CEO" (German), "Asistente Ejecutiva CEO" (Spanish), "Assistente" (Portuguese
+// or Italian), "Adjoint(e) au PDG" (French). All of them are somebody's
+// assistant and none of them is the principal, so match the stem rather than
+// the English word.
+const PROXY = /(chief of staff|office of the|assist|asistent|assistente|adjoint|adjunto|asesor|chef de cabinet|\bdeputy\b|\badvisor\b|\badvisory\b|\bsecretary\b|\bsecretari)/i;
 
 // "Vice President" contains "President". Matching the latter naively ranked
 // every vice president as the principal, so VP-shaped titles are detected
@@ -173,13 +178,17 @@ export function selectContacts(people, maxPerCompany = 1) {
   }
 
   for (const [domain, list] of byDomain) {
+    // Reachability outranks seniority of role. Abcourt Mines returned a
+    // communications lead with no address on file and a chief executive with
+    // one; ranking by role alone picked the person who cannot be written to and
+    // dropped the company from the outreach list altogether. Prefer the best
+    // role that is actually contactable, and fall back to role order only when
+    // Apollo has an address for nobody.
     list.sort((a, b) => {
-      if (a._rank !== b._rank) return a._rank - b._rank;
-      // Prefer a record Apollo already knows an email for: a reveal that finds
-      // nothing still costs the round trip and tells the caller nothing.
       const ae = a.has_email ? 0 : 1;
       const be = b.has_email ? 0 : 1;
       if (ae !== be) return ae - be;
+      if (a._rank !== b._rank) return a._rank - b._rank;
       return String(b.last_refreshed_at || '').localeCompare(String(a.last_refreshed_at || ''));
     });
     // One person per role at most, so two CEOs never crowd out the IR lead.
