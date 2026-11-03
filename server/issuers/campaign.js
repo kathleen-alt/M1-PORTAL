@@ -11,6 +11,8 @@
 
 import { serviceTier, hasReachableContact } from './score.js';
 
+const CANADA = new Set(['TSX', 'TSXV', 'CSE', 'NEO']);
+
 const money = (v) => {
   if (v == null) return '';
   if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
@@ -29,6 +31,12 @@ export function cleanCompany(name) {
   return String(name || '')
     .replace(/\s*[-,]?\s*(Class\s+[A-Z]\s+)?(Common\s+(Stock|Shares)|Ordinary\s+Shares?|Subordinate\s+Voting\s+Shares?|Shares?\s+of\s+Beneficial\s+Interest|American\s+Depositary\s+Shares?|ADS)\b.*$/i, '')
     .replace(/\s*\((?:Nasdaq|NYSE|TSXV?|CSE|OTCQ[XB])[^)]*\)\s*$/i, '')
+    // The TMX directory appends a bare " J" to 158 TSX listings — a market
+    // segment code, not part of the name, and it reads as a typo in a merge
+    // field ("Alamos Gold Inc. J"). A real trailing class letter comes with a
+    // matching ticker suffix (.A/.B) and a spelt-out qualifier, so only the
+    // lone J is dropped.
+    .replace(/\s+J$/, '')
     .trim();
 }
 
@@ -170,16 +178,307 @@ export function toCampaignRows(issuers, { verifiedOnly = false, excludeCatchall 
   }
   // Best-fit first so a capped send takes the best of the list.
   rows.sort((a, b) => (Number(b.fitScore) || 0) - (Number(a.fitScore) || 0));
-  return rows;
+  return dedupeByEmail(rows);
 }
 
-export function toCampaignCsv(rows) {
+/**
+ * One send per person.
+ *
+ * A dual-listed issuer appears twice in the universe -- Western Copper and Gold
+ * sits on both NYSE American and the TSX -- so the same communications lead
+ * comes through on two tickers. Mailing somebody the identical pitch twice is
+ * the fastest way to lose a sending domain, so the second row is dropped here
+ * rather than left for whoever imports the file to notice.
+ *
+ * Rows arrive best-fit first, so the first sighting of an address is the one
+ * worth keeping; its company name is upgraded to the fuller of the two, because
+ * the TMX directory abbreviates where the US one does not.
+ */
+export function dedupeByEmail(rows) {
+  const seen = new Map();
+  const out = [];
+  for (const r of rows) {
+    const k = String(r.email || '').toLowerCase();
+    if (!k) { out.push(r); continue; }
+    const prev = seen.get(k);
+    if (!prev) { seen.set(k, r); out.push(r); continue; }
+    if (String(r.company || '').length > String(prev.company || '').length) prev.company = r.company;
+  }
+  return out;
+}
+
+/**
+ * The scored evidence, in the words the model used.
+ *
+ * Only signals that actually fired and carry a detail string, because a merge
+ * field has to read as something a human could quote. This is wider than
+ * `hooks()`: the peer-liquidity and decay comparisons live here and nowhere
+ * else, and they are the strongest lines in the pitch.
+ */
+export function evidence(it) {
+  const out = [];
+  for (const t of it.fit?.tests || []) {
+    for (const s of t.signals || []) {
+      if (s.hit && s.detail) out.push(`${s.label}: ${s.detail}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * Signals the model could not evaluate, so nobody writes a sentence around a
+ * blank. "No agency retained" in this list means we do not know whether they
+ * have an IR firm -- not that they do not.
+ */
+export function unverifiedSignals(it) {
+  const missing = new Set();
+  for (const t of it.fit?.tests || []) {
+    for (const s of t.signals || []) if (s.evaluated === false) missing.add(s.label);
+  }
+  return [...missing];
+}
+
+// The TMX directory truncates long names to a fixed width ("Erdene Res Dev",
+// "Nouveau Mond Gra Inc"), and a truncated name in a greeting is worse than no
+// name. These are the abbreviations it uses.
+const TMX_ABBREV = /\b(Res|Dev|Gra|Mtls|Mtrl|Mnrls|Mng|Mins?|Intl|Int'l|Slvr|Gld|Cppr|Wstrn|Nthrn|Sthrn|Cdn|Amer|Tech(?!nolog)|Hldgs?|Grp|Cap|Ventrs?|Explr|Expl|Energ|Pharm|Therap|Bio)\b/;
+
+/**
+ * The detailed export: one row per person, carrying everything a copywriter
+ * would otherwise have to come back and ask for. Built for handing to someone
+ * -- or some other session -- with none of this context: who to write to, what
+ * the company is, which engagement fits, the evidence behind the score, which
+ * signals are unknown, and whether Market One has been here before.
+ */
+export const DETAIL_COLUMNS = [
+  ['email', 'Email'],
+  ['firstName', 'First Name'],
+  ['lastName', 'Last Name'],
+  ['fullName', 'Full Name'],
+  ['title', 'Title'],
+  ['roleReached', 'Role Reached'],
+  ['emailStatus', 'Email Status'],
+  ['emailRisk', 'Email Risk'],
+  ['phone', 'Phone'],
+  ['linkedin', 'Contact LinkedIn'],
+  ['contactSource', 'Contact Source'],
+  ['contactVerifiedOn', 'Contact Verified On'],
+
+  ['company', 'Company'],
+  ['legalName', 'Legal Name (as listed)'],
+  ['nameCheck', 'Name Check'],
+  ['ticker', 'Ticker'],
+  ['symbol', 'Symbol'],
+  ['exchange', 'Exchange'],
+  ['alsoListedAs', 'Also Listed As'],
+  ['jurisdiction', 'Jurisdiction'],
+  ['caslApplies', 'CASL Applies'],
+  ['website', 'Website'],
+  ['sector', 'Sector'],
+  ['industry', 'Industry'],
+  ['listingYear', 'Listed Since'],
+  ['genericIrEmail', 'Generic IR Inbox'],
+
+  ['packageFit', 'Package Fit'],
+  ['packageWhy', 'Why That Package'],
+  ['fitScore', 'Fit Score (0-100)'],
+  ['tier', 'Tier'],
+  ['coverage', 'Data Coverage %'],
+  ['provisional', 'Score Provisional'],
+
+  ['marketCap', 'Market Cap'],
+  ['marketCapRaw', 'Market Cap (raw USD)'],
+  ['price', 'Share Price'],
+  ['dollarVolume', '$ Volume/day'],
+  ['peerVolume', 'Peer Median $ Volume/day'],
+  ['volumeVsPeer', 'Volume vs Peers'],
+  ['drawdown', 'Off 52-Week High'],
+  ['watchers', 'StockTwits Watchers'],
+  ['perWatcher', '$ Traded per Watcher'],
+  ['cash', 'Cash on Hand'],
+  ['revenue', 'Revenue'],
+
+  ['irPosture', 'IR Posture'],
+  ['incumbentAgency', 'Incumbent Agency'],
+  ['incumbentNote', 'Incumbent Evidence'],
+  ['newIrHire', 'Recent IR Hire'],
+
+  ['linkedinFollowers', 'LinkedIn Followers'],
+  ['youtubeSubs', 'YouTube Subs'],
+  ['stocktwits30d', 'StockTwits msgs (30d)'],
+  ['outlets', 'Outlets / Newswire'],
+  ['noSocial', 'No Social Presence'],
+
+  ['closedRaiseDate', 'Closed Raise (date)'],
+  ['closedRaise', 'Closed Raise'],
+  ['latestRelease', 'Latest Release'],
+
+  ['lastProposal', 'Last Proposal'],
+  ['proposalOutcome', 'Proposal Outcome'],
+  ['proposalCount', 'Proposals On File'],
+  ['proposalFiles', 'Proposal Documents'],
+
+  ['hook1', 'Why Now 1'],
+  ['hook2', 'Why Now 2'],
+  ['hook3', 'Why Now 3'],
+  ['evidence', 'Scored Evidence'],
+  ['gaps', 'Unverified Signals (do not claim)'],
+];
+
+/**
+ * @param {object[]} issuers  tagged with isClient and proposalHistory
+ * @returns {object[]} one row per person, deduplicated by email address
+ */
+export function toDetailRows(issuers) {
+  const rows = [];
+  for (const it of issuers) {
+    if (it.isClient) continue;
+    if (it.fit?.eligible === false) continue;
+    if (!hasReachableContact(it)) continue;
+    const h = it.proposalHistory || null;
+    const svc = serviceTier(it);
+    const hk = hooks(it);
+    const canada = CANADA.has(it.exchange);
+
+    for (const c of it.apolloContacts || []) {
+      if (!c?.email) continue;
+      const { first, last } = splitName(c.name);
+      rows.push({
+        email: c.email,
+        firstName: first,
+        lastName: last,
+        fullName: c.name || '',
+        title: c.title || '',
+        roleReached: c.role || '',
+        emailStatus: c.emailStatus || '',
+        emailRisk: c.catchall
+          ? 'catch-all domain — the server accepts any address, so "verified" does not prove this mailbox exists'
+          : '',
+        phone: c.phone || '',
+        linkedin: c.linkedin || '',
+        contactSource: c.source || 'apollo',
+        contactVerifiedOn: String(c.lastRefreshed || it.apolloAt || '').slice(0, 10),
+
+        company: cleanCompany(it.name),
+        legalName: it.name || '',
+        nameCheck: '',
+        ticker: it.key || `${it.exchange}:${it.symbol}`,
+        symbol: it.symbol || '',
+        exchange: it.exchange || '',
+        alsoListedAs: '',
+        jurisdiction: canada ? 'Canada' : 'United States',
+        caslApplies: canada
+          ? 'yes — Canadian recipient, CASL consent and unsubscribe rules apply'
+          : 'likely not — US recipient, CAN-SPAM applies',
+        website: it.website || '',
+        sector: it.sectorLabel || '',
+        industry: it.industry || '',
+        listingYear: it.listingYear ?? '',
+        genericIrEmail: it.irEmail || '',
+
+        packageFit: svc.tier === 'unknown' ? '' : svc.tier,
+        packageWhy: svc.why || '',
+        fitScore: it.fit?.score ?? '',
+        tier: it.fit?.tier ?? '',
+        coverage: it.fit?.coverage ?? '',
+        provisional: it.fit?.provisional === true
+          ? 'yes — thin data, treat the score as indicative'
+          : 'no',
+
+        marketCap: money(it.marketCap),
+        marketCapRaw: it.marketCap ?? '',
+        price: it.price != null ? `$${it.price}` : '',
+        dollarVolume: money(it.avgDollarVolume3m),
+        peerVolume: money(it.peerMedianDollarVolume),
+        volumeVsPeer: it.avgDollarVolume3m != null && it.peerMedianDollarVolume
+          ? `${Math.round((it.avgDollarVolume3m / it.peerMedianDollarVolume) * 100)}% of peer median`
+          : '',
+        drawdown: pctOf(it.drawdownPct),
+        watchers: it.watchers ?? '',
+        perWatcher: it.watchers && it.avgDollarVolume3m != null
+          ? `$${(it.avgDollarVolume3m / it.watchers).toFixed(0)}`
+          : '',
+        cash: money(it.cash),
+        revenue: money(it.revenue),
+
+        irPosture: it.irPosture || '',
+        incumbentAgency: it.incumbentAgency || '',
+        incumbentNote: it.incumbentNote || it.incumbentEvidence || '',
+        newIrHire: it.newIrHire || '',
+
+        linkedinFollowers: it.social?.linkedinFollowers ?? '',
+        youtubeSubs: it.social?.youtubeSubs ?? '',
+        stocktwits30d: it.social?.stocktwits?.msgs30d ?? '',
+        outlets: (it.social?.outlets || []).join(' · '),
+        noSocial: it.social?.scannedAt
+          ? (!(it.social.linkedin || it.social.x || it.social.youtube) ? 'yes' : 'no')
+          : 'not scanned',
+
+        closedRaiseDate: (it.closedFinancings || [])[0]?.date || '',
+        closedRaise: (it.closedFinancings || [])[0]
+          ? [it.closedFinancings[0].amount, it.closedFinancings[0].type].filter(Boolean).join(' · ')
+          : '',
+        latestRelease: it.latestRelease || '',
+
+        lastProposal: h?.lastDate || '',
+        proposalOutcome: h
+          ? (h.type === 'contract' ? 'signed with Market One before'
+            : h.type === 'renewal' ? 'renewed with Market One before'
+            : 'pitched before, never signed')
+          : 'never pitched',
+        proposalCount: h?.count ?? '',
+        proposalFiles: (h?.docs || []).map((d) => `${d.date} ${d.file}`).join(' | '),
+
+        hook1: hk[0] || '',
+        hook2: hk[1] || '',
+        hook3: hk[2] || '',
+        evidence: evidence(it).join(' | '),
+        gaps: unverifiedSignals(it).join(' | '),
+      });
+    }
+  }
+
+  // One send per person, as `dedupeByEmail` does for the narrow export -- but
+  // here the surviving row also records the other listing, so the dual listing
+  // itself is not lost. Keep the better-covered record's numbers and the fuller
+  // of the two names.
+  const byEmail = new Map();
+  for (const r of rows) {
+    const k = r.email.toLowerCase();
+    const prev = byEmail.get(k);
+    if (!prev) { byEmail.set(k, r); continue; }
+    const better = (Number(r.coverage) || 0) > (Number(prev.coverage) || 0) ? r : prev;
+    const other = better === r ? prev : r;
+    better.alsoListedAs = [better.alsoListedAs, other.ticker].filter(Boolean).join(' · ');
+    if (other.company.length > better.company.length) better.company = other.company;
+    byEmail.set(k, better);
+  }
+
+  const out = [...byEmail.values()];
+  for (const r of out) {
+    r.nameCheck = TMX_ABBREV.test(r.company)
+      ? `LOOKS TRUNCATED by the exchange directory — check ${r.website || 'the company website'} and fix before merging`
+      : 'ok';
+  }
+  out.sort((a, b) => (Number(b.fitScore) || 0) - (Number(a.fitScore) || 0));
+  return out;
+}
+
+export function toDetailCsv(rows) {
+  return csvOf(rows, DETAIL_COLUMNS);
+}
+
+function csvOf(rows, columns) {
   const esc = (v) => {
     if (v == null) return '';
     const s = String(v).replace(/\s+/g, ' ').trim();
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const head = CAMPAIGN_COLUMNS.map(([, label]) => esc(label)).join(',');
-  const body = rows.map((r) => CAMPAIGN_COLUMNS.map(([k]) => esc(r[k])).join(',')).join('\n');
+  const head = columns.map(([, label]) => esc(label)).join(',');
+  const body = rows.map((r) => columns.map(([k]) => esc(r[k])).join(',')).join('\n');
   return `${head}\n${body}\n`;
+}
+
+export function toCampaignCsv(rows) {
+  return csvOf(rows, CAMPAIGN_COLUMNS);
 }

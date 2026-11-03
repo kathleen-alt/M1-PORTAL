@@ -38,7 +38,7 @@ Issuer intelligence pipeline
   releases    Read full press-release archives      --limit 50 --max-releases 120 --min-score 55
   contacts    Decision-maker contacts from Apollo   --limit 500 --per-company 1
               --no-reveal to search without spending credits
-  campaign    One row per contact, for a mail-merge   --out campaign.csv --min-score 55
+  campaign    One row per contact, for a mail-merge   --out campaign.csv --min-score 55 --detailed
   proposals   What we have already pitched, and when      --limit 40
               --verified-only  drop unverified addresses
               --no-catchall    drop catch-all domains
@@ -134,18 +134,37 @@ async function main() {
       break;
     }
     case 'campaign': {
-      const { toCampaignRows, toCampaignCsv } = await import('../issuers/campaign.js');
+      const { toCampaignRows, toCampaignCsv, toDetailRows, toDetailCsv, DETAIL_COLUMNS } = await import('../issuers/campaign.js');
       const clients = await import('../issuers/clients.js');
       const proposals = await import('../issuers/proposals.js');
       const all = await proposals.tag(await clients.tag(await store.all()));
       const min = numFlag('min-score', 0);
-      const rows = toCampaignRows(
-        all.filter((i) => (i.fit?.score ?? -1) >= min),
-        { verifiedOnly: flag('verified-only') === true, excludeCatchall: flag('no-catchall') === true },
-      );
-      const out = String(flag('out', 'campaign.csv'));
+      const pool = all.filter((i) => (i.fit?.score ?? -1) >= min);
+      // --detailed emits every column a copywriter would otherwise come back
+      // and ask for, deduplicated to one send per person. The default stays the
+      // narrow mail-merge layout a sending tool expects.
+      const detailed = flag('detailed') === true;
+      const rows = detailed
+        ? toDetailRows(pool)
+        : toCampaignRows(pool, {
+          verifiedOnly: flag('verified-only') === true,
+          excludeCatchall: flag('no-catchall') === true,
+        });
+      const out = String(flag('out', detailed ? 'campaign-detailed.csv' : 'campaign.csv'));
       const { writeFile } = await import('node:fs/promises');
-      await writeFile(out, toCampaignCsv(rows));
+      await writeFile(out, detailed ? toDetailCsv(rows) : toCampaignCsv(rows));
+      if (detailed) {
+        await writeFile(out.replace(/\.csv$/, '.json'), JSON.stringify(rows, null, 2));
+        console.log(`  ${DETAIL_COLUMNS.length} columns; JSON alongside at ${out.replace(/\.csv$/, '.json')}`);
+        const unchecked = rows.filter((r) => r.nameCheck !== 'ok');
+        if (unchecked.length) {
+          console.log(`  ${unchecked.length} name(s) truncated by the exchange directory — fix before merging: ${unchecked.map((r) => `${r.ticker} "${r.company}"`).join(', ')}`);
+        }
+        const dual = rows.filter((r) => r.alsoListedAs);
+        if (dual.length) console.log(`  ${dual.length} dual-listed; the duplicate send was dropped (${dual.map((r) => `${r.ticker} + ${r.alsoListedAs}`).join(', ')})`);
+        const casl = rows.filter((r) => r.jurisdiction === 'Canada').length;
+        if (casl) console.log(`  ${casl} Canadian recipients — CASL applies`);
+      }
       const companies = new Set(rows.map((r) => r.symbol)).size;
       console.log(`Wrote ${rows.length} contacts at ${companies} companies to ${out}`);
       const risky = rows.filter((r) => r.emailRisk).length;
